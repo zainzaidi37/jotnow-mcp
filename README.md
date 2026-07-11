@@ -2,6 +2,10 @@
 
 Save and find notes from Claude Code, Codex, other MCP clients, or your terminal. Notes sync to your account at [jotnow.dev](https://jotnow.dev).
 
+This public repository is a mirror of the MCP package maintained in the
+private Jotnow monorepo. Use this repository to inspect the source and report
+issues; releases are synchronized from the monorepo.
+
 ## Setup
 
 1. Sign in at [jotnow.dev](https://jotnow.dev).
