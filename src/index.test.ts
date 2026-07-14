@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { ApiError, NotesApi } from './api.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
+import { saveStoredKey } from './configFile.js';
 import { buildServer } from './server.js';
 import { detectRepoTag, normalizeTags } from './tagging.js';
 
@@ -43,10 +44,6 @@ describe('resolveConfig', () => {
     expect(config.apiUrl).toBe('http://127.0.0.1:54321/functions/v1/mcp-api');
   });
 
-  it('rejects a missing key with setup instructions', () => {
-    expect(() => resolveConfig({})).toThrow(/JOTNOW_API_KEY is not set/);
-  });
-
   it('rejects malformed keys, including the pre-rebrand cn_live_ prefix', () => {
     for (const bad of [
       'jn_live_short',
@@ -54,7 +51,9 @@ describe('resolveConfig', () => {
       'jn_test_' + 'x'.repeat(43),
       'cn_live_' + 'x'.repeat(43),
     ]) {
-      expect(() => resolveConfig({ JOTNOW_API_KEY: bad })).toThrow(/does not look like/);
+      // A no-op loader keeps these tests decoupled from any real stored-key
+      // file; the malformed env branch never falls back to it anyway.
+      expect(() => resolveConfig({ JOTNOW_API_KEY: bad }, () => undefined)).toThrow(/does not look like/);
     }
   });
 
@@ -63,6 +62,91 @@ describe('resolveConfig', () => {
     expect(API_KEY_PATTERN.test(`${GOOD_KEY}x`)).toBe(false);
     expect(API_KEY_PATTERN.test(GOOD_KEY.slice(0, -1))).toBe(false);
     expect(API_KEY_PATTERN.test(GOOD_KEY.replace('a', '!'))).toBe(false);
+  });
+
+  it('no key found anywhere: friendly first-run error pointing at `jotnow key`', () => {
+    expect(() => resolveConfig({}, () => undefined)).toThrow(
+      /No API key found\. Run `jotnow key` to set one up, or set JOTNOW_API_KEY\./,
+    );
+  });
+
+  it('a well-formed env key wins over a different, also-valid stored key', () => {
+    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const config = resolveConfig({ JOTNOW_API_KEY: GOOD_KEY }, () => STORED_KEY);
+    expect(config.apiKey).toBe(GOOD_KEY);
+  });
+
+  it('malformed env key throws even when a valid stored key exists — no silent fallback', () => {
+    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const loadStored = vi.fn(() => STORED_KEY);
+    expect(() => resolveConfig({ JOTNOW_API_KEY: 'jn_live_bad' }, loadStored)).toThrow(
+      /overrides any stored key/,
+    );
+    expect(loadStored).not.toHaveBeenCalled();
+  });
+
+  it('env unset, valid stored key present: the stored key is used', () => {
+    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const config = resolveConfig({}, () => STORED_KEY);
+    expect(config.apiKey).toBe(STORED_KEY);
+  });
+
+  it('env unset, malformed stored key: error names the file and suggests `jotnow key`', () => {
+    expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/jotnow key/);
+    expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/config\.json/);
+  });
+
+  it('env unset, loader throws (corrupt file): the error propagates with the file path intact', () => {
+    expect(() =>
+      resolveConfig({}, () => {
+        throw new Error('/home/x/.jotnow/config.json is not valid JSON. Run `jotnow key` to recreate it.');
+      }),
+    ).toThrow(/\.jotnow\/config\.json/);
+  });
+
+  it('none of the no-key / malformed-env / malformed-stored error messages ever contain a key value', () => {
+    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const badEnvKey = 'jn_live_totally_bogus_env_value';
+    const badStoredKey = 'jn_live_totally_bogus_stored_value';
+
+    const cases: Array<() => unknown> = [
+      () => resolveConfig({}, () => undefined),
+      () => resolveConfig({ JOTNOW_API_KEY: badEnvKey }, () => STORED_KEY),
+      () => resolveConfig({}, () => badStoredKey),
+      () =>
+        resolveConfig({}, () => {
+          throw new Error('config file corrupt');
+        }),
+    ];
+
+    for (const attempt of cases) {
+      try {
+        attempt();
+        throw new Error('expected attempt to throw');
+      } catch (err) {
+        const message = (err as Error).message;
+        expect(message).not.toContain(badEnvKey);
+        expect(message).not.toContain(badStoredKey);
+        expect(message).not.toContain(STORED_KEY);
+      }
+    }
+  });
+
+  it('wires the real default loader for the bare-invocation MCP server path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jotnow-cfg-'));
+    const prevDir = process.env.JOTNOW_CONFIG_DIR;
+    try {
+      process.env.JOTNOW_CONFIG_DIR = dir;
+      saveStoredKey(GOOD_KEY, dir);
+      // No loadStored override: this exercises the module's real default
+      // loader, same as a bare `jotnow` MCP-server launch with no env key.
+      const config = resolveConfig({});
+      expect(config.apiKey).toBe(GOOD_KEY);
+    } finally {
+      if (prevDir === undefined) delete process.env.JOTNOW_CONFIG_DIR;
+      else process.env.JOTNOW_CONFIG_DIR = prevDir;
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

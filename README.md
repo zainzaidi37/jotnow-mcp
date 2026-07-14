@@ -1,6 +1,8 @@
 # jotnow
 
-Save and find notes from Claude Code, Codex, other MCP clients, or your terminal. Notes sync to your account at [jotnow.dev](https://jotnow.dev).
+Notes for AI coding agents. Every session ends with something worth keeping — a fix, a snippet, the reason the bug happened. Tell your agent to "jot that down" and it's saved to your account at [jotnow.dev](https://jotnow.dev): tagged, searchable, exportable. Works with Claude Code, Codex, and any other MCP client, plus a terminal CLI.
+
+Signing up at [jotnow.dev](https://jotnow.dev) is free — you need an account to get the API key that connects this package to your notes.
 
 This public repository is a mirror of the MCP package maintained in the
 private Jotnow monorepo. Use this repository to inspect the source and report
@@ -8,21 +10,43 @@ issues; releases are synchronized from the monorepo.
 
 ## Setup
 
-1. Sign in at [jotnow.dev](https://jotnow.dev).
+1. Sign up (free) or sign in at [jotnow.dev](https://jotnow.dev).
 2. Open **Settings > API keys** and create a key.
-3. Run:
+3. Install and store the key once for this machine:
+
+```bash
+npm install --global jotnow
+jotnow key
+```
+
+`jotnow key` prompts for the key (input hidden, never echoed), validates it against the API, and saves it to a config file so every later `jotnow` command and MCP config on this machine picks it up automatically — no `JOTNOW_API_KEY` env var required. It then prints the MCP configuration for your client, and for Claude Code, the equivalent `claude mcp add` command.
+
+Once connected, ask your agent to "jot that down", find your jots, or list your recent jots.
+
+Prefer not to install globally, or want to configure an MCP client without touching your terminal first? Use the env-var flow instead:
 
 ```bash
 npx jotnow init --key jn_live_your_key
 ```
 
-The command validates the key and prints the MCP configuration for your client. For Claude Code, it also prints the equivalent `claude mcp add` command.
-
-Once connected, ask your agent to "jot that down", find your jots, or list your recent jots.
+This validates the key and prints an MCP config block with the key embedded in its `env`, plus the equivalent `claude mcp add` command.
 
 ## MCP configuration
 
-You can configure an MCP client directly:
+Once a key is stored via `jotnow key`, no `env` block is needed:
+
+```json
+{
+  "mcpServers": {
+    "jotnow": {
+      "command": "npx",
+      "args": ["-y", "jotnow"]
+    }
+  }
+}
+```
+
+Or configure a key directly in the MCP config (what `jotnow init` prints):
 
 ```json
 {
@@ -48,33 +72,44 @@ The server provides these tools:
 
 ## CLI
 
-Run commands without a global install:
+After a global install, store your key once:
 
 ```bash
-npx jotnow add "Useful fix" --body "Restart the worker after changing its environment."
-npx jotnow search "worker environment"
-npx jotnow recall "why deployments use stale configuration"
-npx jotnow get <id>
-npx jotnow recent 10
+npm install --global jotnow
+jotnow key
+```
+
+Then run commands directly:
+
+```bash
+jotnow add "Useful fix" --body "Restart the worker after changing its environment."
+jotnow search "worker environment"
+jotnow recall "why deployments use stale configuration"
+jotnow get <id>
+jotnow recent 10
 ```
 
 You can also pipe a note body through standard input:
 
 ```bash
-printf 'Use the pooled connection string in serverless jobs.\n' | npx jotnow add "Database connection"
+printf 'Use the pooled connection string in serverless jobs.\n' | jotnow add "Database connection"
 ```
 
-After a global install, omit `npx`:
+Everything above also works without a global install by prefixing `npx`, e.g. `npx jotnow recent` — `npx jotnow key` stores the key the same way.
+
+Scripting `jotnow key` (e.g. from a provisioning script): pipe the key in and it skips the interactive prompt entirely, reading one line from stdin instead —
 
 ```bash
-npm install --global jotnow
-jotnow recent
+echo "$JOTNOW_KEY" | jotnow key
 ```
 
 ## Environment variables
 
-- `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings
+- `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk. A malformed `JOTNOW_API_KEY` is an error rather than a silent fallback to the stored key, since that could otherwise write to the wrong account.
 - `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting
+- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`)
+
+`jotnow key` stores the key in `~/.jotnow/config.json` (or `$JOTNOW_CONFIG_DIR/config.json`), created with permissions that only your user can read.
 
 The npm package contains no account credentials or service-role secret. Each installation uses the API key supplied by its user. Keep that key private and revoke it from Jotnow settings if it is exposed.
 

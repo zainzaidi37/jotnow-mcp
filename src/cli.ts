@@ -1,10 +1,14 @@
 import { ApiError, NotesApi, type RecallMatch, type SearchHit, type SearchResult } from './api.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
+import { configDir, saveStoredKey } from './configFile.js';
+import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { serveStdio } from './server.js';
 
 export const VERSION = '0.1.2';
 
-const HELP = `jotnow — jot and find notes from the terminal
+export const HELP = `jotnow — jot and find notes from the terminal
+
+For terminal use anywhere: npm i -g jotnow, then jotnow key
 
 Usage:
   jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]
@@ -16,10 +20,17 @@ Usage:
   jotnow                         run the MCP server on stdio (for MCP configs)
   jotnow init --key jn_live_...
                                  validate a key and print the MCP config block
+  jotnow key
+                                 store your API key for this machine (input hidden)
 
 Environment:
-  JOTNOW_API_KEY   API key from the web app (Settings → API keys)
+  JOTNOW_API_KEY   API key from the web app (Settings → API keys); overrides
+                   any key stored by \`jotnow key\`
   JOTNOW_API_URL   override the API endpoint (defaults to production)
+
+A key stored by \`jotnow key\` lives in ~/.jotnow/config.json (or
+JOTNOW_CONFIG_DIR if set) and is used automatically when JOTNOW_API_KEY is
+unset.
 `;
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
@@ -121,6 +132,65 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
   console.log('\nOr with the Claude Code CLI:\n');
   console.log(`claude mcp add jotnow -e JOTNOW_API_KEY=${key} -- npx -y jotnow`);
   console.log('\nThen tell your agent to "jot that down" — done.');
+  console.log('\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.');
+}
+
+export interface RunKeyDeps {
+  env?: NodeJS.ProcessEnv;
+  // Bypasses the real prompt entirely — used by orchestration tests that
+  // don't want to drive stream mechanics (those live in prompt.test.ts).
+  readHidden?: () => Promise<string>;
+  input?: ReadHiddenLineOptions['input'];
+  output?: ReadHiddenLineOptions['output'];
+  isTTY?: boolean;
+  stdout?: { write: (chunk: string) => unknown };
+  stderr?: { write: (chunk: string) => unknown };
+}
+
+export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
+  const env = deps.env ?? process.env;
+  const stdout = deps.stdout ?? process.stdout;
+  const stderr = deps.stderr ?? process.stderr;
+
+  const readHidden =
+    deps.readHidden ??
+    (() => {
+      const input = deps.input ?? (process.stdin as unknown as ReadHiddenLineOptions['input']);
+      return readHiddenLine({
+        input,
+        output: deps.output ?? stdout,
+        isTTY: deps.isTTY ?? Boolean((input as unknown as { isTTY?: boolean }).isTTY),
+        prompt: 'Paste your jotnow API key (input hidden): ',
+      });
+    });
+
+  const key = await readHidden();
+  if (!API_KEY_PATTERN.test(key)) {
+    throw new Error('that does not look like a jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
+  }
+
+  const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;
+  const api = new NotesApi({ apiUrl, apiKey: key });
+
+  stdout.write('Checking the key against the API… ');
+  await api.listRecentNotes(1);
+  stdout.write('ok ✔\n\n');
+
+  saveStoredKey(key, configDir(env));
+
+  if (env.JOTNOW_API_KEY?.trim()) {
+    stderr.write(
+      'warning: JOTNOW_API_KEY is set in your environment; it will override the stored key until you unset it.\n',
+    );
+  }
+
+  stdout.write('Saved — jotnow will use this key automatically from now on, no env var needed.\n\n');
+  stdout.write('Add this to your MCP config (.mcp.json for Claude Code, Codex equivalent):\n\n');
+  stdout.write(
+    `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'] } } }, null, 2)}\n`,
+  );
+  stdout.write('\nOr with the Claude Code CLI:\n\n');
+  stdout.write('claude mcp add jotnow -- npx -y jotnow\n');
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -142,6 +212,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     switch (command) {
       case 'init':
         await runInit(flags, process.env);
+        return;
+      case 'key':
+        await runKey();
         return;
       case 'add': {
         const title = positional[0];
