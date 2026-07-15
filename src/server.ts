@@ -130,7 +130,10 @@ export function buildServer(api: NotesApi, version: string, options: ServerOptio
         'jots and either find_jots came up empty or you only know the problem, not the words ' +
         'the note would contain (e.g. an error being debugged). Returns up to 8 candidates — ' +
         'title, one-line gist, similarity (0-1; below ~0.4 treat as no real match), and id. ' +
-        'Read a candidate in full with get_jot before relying on it. Requires the Pro plan.',
+        'Read a candidate in full with get_jot before relying on it. Indexing is near-real-time ' +
+        'but not instant: a jot saved in the last few seconds may not appear yet — do not treat ' +
+        'its absence as meaningful, and retry once if you expect a just-saved jot to match. ' +
+        'Requires the Pro plan.',
       inputSchema: {
         query: z.string().min(1).describe('What you are looking for, phrased naturally'),
       },

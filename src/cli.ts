@@ -4,7 +4,7 @@ import { configDir, saveStoredKey } from './configFile.js';
 import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { serveStdio } from './server.js';
 
-export const VERSION = '0.1.2';
+export const VERSION = '0.2.0';
 
 export const HELP = `jotnow — jot and find notes from the terminal
 
