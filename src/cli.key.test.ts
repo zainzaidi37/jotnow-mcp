@@ -53,6 +53,7 @@ describe('runKey', () => {
     expect(stdout.all()).toMatch(/ok ✔/);
     expect(stdout.all()).toContain('mcpServers');
     expect(stdout.all()).toContain('claude mcp add jotnow -- npx -y jotnow');
+    expect(stdout.all()).toContain('codex mcp add jotnow -- npx -y jotnow');
   });
 
   it('malformed key: errors before any API call, saves nothing', async () => {
@@ -143,7 +144,7 @@ describe('copy', () => {
     expect(HELP).toContain('npm i -g jotnow');
   });
 
-  it('runInit output includes the `jotnow key` tip', async () => {
+  it('runInit output includes the `jotnow key` tip and Codex command', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
@@ -155,6 +156,8 @@ describe('copy', () => {
       logSpy.mockRestore();
       vi.unstubAllGlobals();
     }
-    expect(logs.join('\n')).toMatch(/jotnow key/);
+    const output = logs.join('\n');
+    expect(output).toMatch(/jotnow key/);
+    expect(output).toContain(`codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`);
   });
 });

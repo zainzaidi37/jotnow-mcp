@@ -4,7 +4,7 @@ import { configDir, saveStoredKey } from './configFile.js';
 import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { serveStdio } from './server.js';
 
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 export const HELP = `jotnow — jot and find notes from the terminal
 
@@ -127,10 +127,12 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
     },
   };
 
-  console.log('Add this to your MCP config (.mcp.json for Claude Code, Codex equivalent):\n');
+  console.log('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n');
   console.log(JSON.stringify(mcpConfig, null, 2));
   console.log('\nOr with the Claude Code CLI:\n');
   console.log(`claude mcp add jotnow -e JOTNOW_API_KEY=${key} -- npx -y jotnow`);
+  console.log('\nOr with the Codex CLI:\n');
+  console.log(`codex mcp add jotnow --env JOTNOW_API_KEY=${key} -- npx -y jotnow`);
   console.log('\nThen tell your agent to "jot that down" — done.');
   console.log('\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.');
 }
@@ -185,12 +187,14 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
   }
 
   stdout.write('Saved — jotnow will use this key automatically from now on, no env var needed.\n\n');
-  stdout.write('Add this to your MCP config (.mcp.json for Claude Code, Codex equivalent):\n\n');
+  stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
   stdout.write(
     `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'] } } }, null, 2)}\n`,
   );
   stdout.write('\nOr with the Claude Code CLI:\n\n');
   stdout.write('claude mcp add jotnow -- npx -y jotnow\n');
+  stdout.write('\nOr with the Codex CLI:\n\n');
+  stdout.write('codex mcp add jotnow -- npx -y jotnow\n');
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
