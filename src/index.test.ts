@@ -177,6 +177,51 @@ describe('NotesApi', () => {
     expect(body.tags).toEqual(['infra', 'nginx']);
   });
 
+  it('saveNote canonicalizes against cached vocabulary and returns the tags actually sent', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, {
+      note: { id: 'x', title: 't', created_at: 'now' },
+      existing_tags: ['Authentication', 'db'],
+    }));
+    const api = new NotesApi(config, fetchMock as unknown as typeof fetch);
+
+    const saved = await api.saveNote({
+      title: 't',
+      body: 'b',
+      tags: [' authentication ', 'New Topic'],
+      vocabulary: ['Authentication', 'db'],
+    });
+
+    const body = JSON.parse((fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string);
+    expect(body.tags).toEqual(['Authentication', 'new-topic']);
+    expect(saved.tags).toEqual(['Authentication', 'new-topic']);
+    expect(saved.existingTags).toEqual(['Authentication', 'db']);
+  });
+
+  it('saveNote tolerates an old server response without existing_tags', async () => {
+    const api = new NotesApi(
+      config,
+      (async () => jsonResponse(200, { note: { id: 'x', title: 't', created_at: 'now' } })) as typeof fetch,
+    );
+
+    await expect(api.saveNote({ title: 't', body: 'b', tags: ['Infra'] })).resolves.toEqual({
+      id: 'x', title: 't', created_at: 'now', tags: ['infra'], existingTags: undefined,
+    });
+  });
+
+  it('saveNote ignores a malformed existing_tags value instead of poisoning the session cache', async () => {
+    const api = new NotesApi(
+      config,
+      (async () => jsonResponse(200, {
+        note: { id: 'x', title: 't', created_at: 'now' },
+        existing_tags: ['ok', { x: 1 }],
+      })) as typeof fetch,
+    );
+
+    await expect(api.saveNote({ title: 't', body: 'b', tags: ['Infra'] })).resolves.toEqual({
+      id: 'x', title: 't', created_at: 'now', tags: ['infra'], existingTags: undefined,
+    });
+  });
+
   it('searchNotes returns the compact hits and the true total', async () => {
     const payload = {
       notes: [{ id: 'n1', title: 'hit', tags: ['infra'], updated_at: '2026-07-06T00:00:00Z' }],
@@ -300,6 +345,13 @@ describe('normalizeTags', () => {
     expect(normalizeTags(['', '  ', 'ok'])).toEqual(['ok']);
     expect(normalizeTags(['a', 'b', 'c', 'd', 'e', 'f'])).toEqual(['a', 'b', 'c', 'd', 'e']);
   });
+
+  it('uses an exact-after-normalization vocabulary match and leaves non-matches normalized', () => {
+    expect(normalizeTags(
+      [' AUTHENTICATION ', 'Connection Pool', 'new topic', 'authentication'],
+      ['Authentication', 'connection-pool', 'db'],
+    )).toEqual(['Authentication', 'connection-pool', 'new-topic']);
+  });
 });
 
 describe('detectRepoTag', () => {
@@ -357,9 +409,10 @@ describe('buildServer', () => {
     expect(tools.jot!.description).toMatch(/"save (it as a|this as a) jot"/);
     expect(tools.jot!.description).toMatch(/"save jot"/);
     expect(tools.jot!.description).toMatch(/bare "jot"/);
+    expect(tools.jot!.description).toMatch(/prefer tags echoed by earlier jot results/i);
   });
 
-  it('jot appends the repo tag and normalizes agent tags before saving', async () => {
+  it('jot appends the repo tag and relies on the API choke point for normalization', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { note: { id: 'n1', title: 't', created_at: 'now' } }));
     const server = buildServer(
       new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY }, fetchMock as unknown as typeof fetch),
@@ -371,6 +424,39 @@ describe('buildServer', () => {
     const body = JSON.parse((fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string);
     expect(body.tags).toEqual(['infra', 'my-repo']);
     expect(result.content[0]!.text).toContain('Jotted');
+    expect(result.content[0]!.text).not.toContain('existing tags include');
+  });
+
+  it('jot displays actually-saved tags, hints the returned vocabulary, and caches it for later saves', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse(200, {
+        note: { id: 'n1', title: 'first', created_at: 'now' },
+        existing_tags: ['Authentication', 'db'],
+      }))
+      .mockResolvedValueOnce(jsonResponse(200, {
+        note: { id: 'n2', title: 'second', created_at: 'later' },
+        existing_tags: ['Authentication', 'db'],
+      }));
+    const server = buildServer(
+      new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY }, fetchMock as unknown as typeof fetch),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    const jot = registeredTools(server).jot!;
+
+    const first = await jot.handler({ title: 'first', body: 'b', tags: ['Seed'] }, {});
+    expect(first.content[0]!.text).toContain('tags: seed');
+    expect(first.content[0]!.text).toContain(
+      "The user's existing tags include: Authentication, db — reuse these exact names on future jots.",
+    );
+
+    const second = await jot.handler({ title: 'second', body: 'b', tags: [' authentication '] }, {});
+    const secondBody = JSON.parse(
+      (fetchMock.mock.calls[1]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(secondBody.tags).toEqual(['Authentication']);
+    expect(second.content[0]!.text).toContain('tags: Authentication');
   });
 
   it('find_jots reports compact hits and the total without bodies', async () => {

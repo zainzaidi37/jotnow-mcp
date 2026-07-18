@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { ApiError, type FullNote, type NotesApi, type SearchHit } from './api.js';
-import { detectRepoTag, normalizeTags } from './tagging.js';
+import { detectRepoTag } from './tagging.js';
 
 // Every tool description leads with an explicit-invocation contract ("jot" /
 // jotnow wording only) and jot carries a negative rule against memory-file
@@ -56,6 +56,7 @@ export interface ServerOptions {
 
 export function buildServer(api: NotesApi, version: string, options: ServerOptions = {}): McpServer {
   const repoTag = options.repoTag === undefined ? detectRepoTag() : options.repoTag;
+  let tagVocabulary: string[] | undefined;
   const server = new McpServer({ name: 'jotnow', version });
 
   server.registerTool(
@@ -71,7 +72,7 @@ export function buildServer(api: NotesApi, version: string, options: ServerOptio
         '"remember this", "save to memory", or CLAUDE.md/memory-file requests; those belong to ' +
         'your own memory system, not jotnow. Write a short descriptive title and 1-3 concise ' +
         'lowercase topic tags, preferring short forms (infra, auth, db). The current repo name ' +
-        'is appended as a tag automatically.',
+        'is appended as a tag automatically. Prefer tags echoed by earlier jot results when they apply.',
       inputSchema: {
         title: z.string().describe('Short descriptive title for the note'),
         body: z.string().describe('Note body, markdown'),
@@ -81,9 +82,21 @@ export function buildServer(api: NotesApi, version: string, options: ServerOptio
     },
     async ({ title, body, tags, folder }) => {
       try {
-        const allTags = normalizeTags([...(tags ?? []), ...(repoTag ? [repoTag] : [])]);
-        const note = await api.saveNote({ title, body, tags: allTags, folder, source: 'mcp' });
-        return textResult(`Jotted "${note.title}" (id ${note.id}, tags: ${allTags.join(', ') || 'none'}).`);
+        const note = await api.saveNote({
+          title,
+          body,
+          tags: [...(tags ?? []), ...(repoTag ? [repoTag] : [])],
+          folder,
+          source: 'mcp',
+          vocabulary: tagVocabulary,
+        });
+        if (note.existingTags !== undefined) tagVocabulary = note.existingTags;
+        const hint = note.existingTags && note.existingTags.length > 0
+          ? `\nThe user's existing tags include: ${note.existingTags.slice(0, 8).join(', ')} — reuse these exact names on future jots.`
+          : '';
+        return textResult(
+          `Jotted "${note.title}" (id ${note.id}, tags: ${note.tags.join(', ') || 'none'}).${hint}`,
+        );
       } catch (error) {
         return errorResult(error);
       }

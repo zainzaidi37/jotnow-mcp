@@ -6,14 +6,24 @@ import { basename, dirname, join } from 'node:path';
  * whitespace collapsed to dashes, deduped, at most 5. Otherwise search
  * fragments into Auth/auth/authentication variants.
  */
-export function normalizeTags(tags: string[]): string[] {
+function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase().replace(/\s+/g, '-');
+}
+
+export function normalizeTags(tags: string[], vocabulary?: string[]): string[] {
+  const canonical = new Map<string, string>();
+  for (const existing of vocabulary ?? []) {
+    const normalized = normalizeTag(existing);
+    if (normalized.length > 0 && !canonical.has(normalized)) canonical.set(normalized, existing);
+  }
+
   const seen = new Set<string>();
   const out: string[] = [];
   for (const raw of tags) {
-    const tag = raw.trim().toLowerCase().replace(/\s+/g, '-');
-    if (tag.length === 0 || seen.has(tag)) continue;
-    seen.add(tag);
-    out.push(tag);
+    const normalized = normalizeTag(raw);
+    if (normalized.length === 0 || seen.has(normalized)) continue;
+    seen.add(normalized);
+    out.push(canonical.get(normalized) ?? normalized);
     if (out.length === 5) break;
   }
   return out;

@@ -49,6 +49,15 @@ export interface SaveNoteInput {
   tags?: string[];
   folder?: string;
   source?: 'mcp' | 'cli';
+  vocabulary?: string[];
+}
+
+export interface SavedNote {
+  id: string;
+  title: string;
+  created_at: string;
+  tags: string[];
+  existingTags?: string[];
 }
 
 export class ApiError extends Error {
@@ -67,18 +76,27 @@ export class NotesApi {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async saveNote(input: SaveNoteInput): Promise<{ id: string; title: string; created_at: string }> {
-    const note = await this.call('save_note', {
+  async saveNote(input: SaveNoteInput): Promise<SavedNote> {
+    const tags = input.tags ? normalizeTags(input.tags, input.vocabulary) : [];
+    const response = await this.call('save_note', {
       id: crypto.randomUUID(),
       title: input.title,
       body: input.body,
       // Normalized here, the single choke point, so the CLI and the MCP
       // tool can't disagree on tag hygiene.
-      tags: input.tags ? normalizeTags(input.tags) : undefined,
+      tags: input.tags ? tags : undefined,
       folder: input.folder,
       source: input.source ?? 'mcp',
     });
-    return (note as { note: { id: string; title: string; created_at: string } }).note;
+    const result = response as {
+      note: { id: string; title: string; created_at: string };
+      existing_tags?: unknown;
+    };
+    const existingTags = Array.isArray(result.existing_tags) &&
+        result.existing_tags.every((tag) => typeof tag === 'string')
+      ? result.existing_tags
+      : undefined;
+    return { ...result.note, tags, existingTags };
   }
 
   async listRecentNotes(limit = 10): Promise<SearchHit[]> {
