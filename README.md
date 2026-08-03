@@ -5,7 +5,8 @@ Free to sign in, and use. Export all your notes in markdown anytime, no vendor-l
 
 ## Setup
 
-1. Sign up (free) or sign in at [jotnow.dev](https://jotnow.dev).
+1. Sign up (free) at [jotnow.dev](https://jotnow.dev), then open the confirmation email; its link
+   confirms your address and signs you in. Or sign in to an existing account.
 2. Open **Settings > API keys** and create a key.
 3. Install and store the key once for this machine:
 
