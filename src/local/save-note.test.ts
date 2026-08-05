@@ -87,6 +87,34 @@ describe('saveNoteLocally', () => {
     expect(rows(library, 'folders')).toHaveLength(0);
   });
 
+  it('stores SQL-metacharacter content literally — values are bound, never interpolated', () => {
+    // The applier builds its SQL from schema-derived identifiers and binds
+    // every value; this pins that property against a future regression that
+    // interpolates. The payloads are stored byte-for-byte and the other
+    // tables survive.
+    const title = `Rob'); DROP TABLE "notes";--`;
+    const body = `x" OR "1"="1'; DELETE FROM notes; PRAGMA journal_mode=DELETE;--\n${'"'.repeat(8)}`;
+    const folder = `evil'"); DROP TABLE folders;--`;
+    // The tag rides the one op with different SQL (note_tags, INSERT OR
+    // IGNORE) and the normalizeTags choke point.
+    const tag = `inject'); DROP TABLE tags;--`;
+    const saved = saveNoteLocally(library, { title, body, folder, tags: [tag], source: 'cli' });
+
+    const notes = rows(library, 'notes');
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toMatchObject({ id: saved.id, title, body });
+    expect(rows(library, 'folders').map((row) => row.name)).toEqual([folder]);
+    expect(rows(library, 'tags')).toHaveLength(1);
+    expect(rows(library, 'note_tags')).toHaveLength(1);
+
+    // The tables the payloads name still exist and still accept writes.
+    const again = saveNoteLocally(library, { title: 'after', body: '', folder, tags: [tag] });
+    expect(rows(library, 'notes').map((note) => note.id)).toEqual([saved.id, again.id]);
+    expect(rows(library, 'folders')).toHaveLength(1);
+    expect(rows(library, 'tags')).toHaveLength(1);
+    expect(rows(library, 'note_tags')).toHaveLength(2);
+  });
+
   it('a duplicate tag in one call links once and does not fail (INSERT OR IGNORE)', () => {
     const saved = saveNoteLocally(library, { title: 'x', body: '', tags: ['auth', ' auth '] });
     expect(saved.tags).toEqual(['auth']);

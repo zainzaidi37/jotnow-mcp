@@ -193,13 +193,13 @@ function runWhere(env: NodeJS.ProcessEnv): void {
     resolution = resolveMode(env);
   } catch (error) {
     console.log(`mode:   unresolved`);
-    console.log(`why:    ${error instanceof Error ? error.message : String(error)}`);
+    console.log(`why:    ${terminalSafe(error instanceof Error ? error.message : String(error))}`);
     process.exitCode = 1;
     return;
   }
 
   console.log(`mode:   ${resolution.mode}`);
-  console.log(`why:    ${resolution.why}`);
+  console.log(`why:    ${terminalSafe(resolution.why)}`);
   console.log(`config: ${configDir(env)}`);
 
   if (resolution.mode === 'account') {
@@ -211,14 +211,19 @@ function runWhere(env: NodeJS.ProcessEnv): void {
   try {
     const library = openLocalLibrary(resolution.dir);
     try {
-      console.log(`target: ${library.path}`);
-      console.log(`library: workspace ${library.workspaceId}, schema version ${library.schemaVersion}`);
+      // db_path and the workspace id come from the pointer file and the
+      // library's own meta row — file-controlled strings, same posture as
+      // note fields: strip on display, never on store.
+      console.log(`target: ${terminalSafe(library.path)}`);
+      console.log(
+        `library: workspace ${terminalSafe(library.workspaceId)}, schema version ${library.schemaVersion}`,
+      );
     } finally {
       library.close();
     }
   } catch (error) {
     console.log(`target: unavailable`);
-    console.log(`error:  ${error instanceof Error ? error.message : String(error)}`);
+    console.log(`error:  ${terminalSafe(error instanceof Error ? error.message : String(error))}`);
     process.exitCode = 1;
   }
 }
@@ -328,7 +333,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
           folder: flags.get('folder'),
           source: 'cli',
         });
-        console.log(`Jotted "${note.title}" (id ${note.id}).`);
+        console.log(`Jotted "${terminalSafe(note.title)}" (id ${note.id}).`);
         return;
       }
       case 'search': {
@@ -369,7 +374,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     }
   } catch (error) {
     const message = error instanceof ApiError || error instanceof Error ? error.message : String(error);
-    console.error(`error: ${message}`);
+    // Error messages interpolate pointer- and server-derived strings
+    // (db_path, API error bodies) — the same smuggling surface as a title.
+    console.error(`error: ${terminalSafe(message)}`);
     process.exitCode = 1;
   }
 }

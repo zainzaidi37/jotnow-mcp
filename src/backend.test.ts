@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -199,6 +199,43 @@ describe('the CLI, through main()', () => {
     expect(process.exitCode).toBeUndefined();
     expect(notesIn(dbPath).map((note) => note.title)).toEqual(['a local jot']);
     expect(logs.join('\n')).toContain('Jotted "a local jot"');
+  });
+
+  it('`jotnow add` echoes the title through terminalSafe — a jot cannot smuggle ANSI into the terminal', async () => {
+    // The title is agent-written in the MCP flow and server-round-tripped in
+    // account mode, so the echo is untrusted like every other printed note
+    // field (printHit, get, recall). The escapes must be stripped from the
+    // terminal while the stored row keeps the exact bytes.
+    // ESC/CSI/OSC/BEL plus \u009b — the 8-bit C1 CSI terminals honour in
+    // 8-bit mode, which terminalSafe's range claims and this pins.
+    const hostile = '\u001b[2J\u001b]0;owned\u0007\u009b31mreal title';
+    const { main } = await import('./cli.js');
+    await main(['add', hostile, '--body', 'x']);
+    expect(process.exitCode).toBeUndefined();
+    expect(notesIn(dbPath).map((note) => note.title)).toEqual([hostile]);
+    const echoed = logs.join('\n');
+    expect(echoed).toContain('Jotted "[2J]0;owned31mreal title"');
+    expect(echoed).not.toContain('\u001b');
+    expect(echoed).not.toContain('\u009b');
+  });
+
+  it('`jotnow where` sanitizes pointer-derived strings — a crafted db_path cannot smuggle ANSI', async () => {
+    // The pointer file is file-controlled input; its db_path is interpolated
+    // into `where` output and every LocalModeError. `where` is the command
+    // run when things are already broken — exactly when the pointer is most
+    // likely to be garbage or hostile.
+    const evilPath = join(dir, 'gone\u001b]0;owned\u0007\u009b31m.db');
+    writeFileSync(
+      join(dir, 'local-library.json'),
+      JSON.stringify({ version: 1, db_path: evilPath, workspace_uuid: FIXTURE_WORKSPACE, schema_version: 2 }),
+    );
+    const { main } = await import('./cli.js');
+    await main(['where']);
+    expect(process.exitCode).toBe(1);
+    const output = [...logs, ...errors].join('\n');
+    expect(output).toContain('target: unavailable');
+    expect(output).not.toContain('\u001b');
+    expect(output).not.toContain('\u009b');
   });
 
   it('`jotnow search` in local mode points at the desktop app instead of half-answering', async () => {
