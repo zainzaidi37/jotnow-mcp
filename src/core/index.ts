@@ -656,6 +656,18 @@ export const ServerNoteTagSchema = NoteTagSchema.extend({ sync_seq: syncSeq });
  */
 export * from './sqlite-ddl.js';
 
+/**
+ * The shared save-note semantics (plans/desktop-app.md §6): pure planning
+ * functions that turn "jot this, here, with these tags" into row inserts,
+ * ported from `mcp_save_note` and pinned to it by a conformance suite.
+ *
+ * Deliberately barrel-reachable: the barrel's closure is exactly what the
+ * vendoring generator (§4.5) copies into `packages/mcp/src/core`, and WP6's
+ * local-library CLI is the reason this module exists. Dependency-free, so it
+ * drags nothing into either consumer.
+ */
+export * from './save-note.js';
+
 // The shared LocalStore fixture format lives in `./local-store-fixtures` and is
 // deliberately NOT re-exported here. This barrel is imported by the SPA (via
 // local-store.ts, for the column map), so anything exported from it can end up
