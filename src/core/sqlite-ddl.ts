@@ -50,12 +50,11 @@
  */
 
 /**
- * The eight tables a batch may touch, mirroring `TableName` in
- * `apps/web/src/data/local-store.ts`. Declared here rather than imported
- * because `packages/core` never imports app code; a test in `apps/web` pins
- * the two lists together.
+ * The eight tables migration 1 shipped — **frozen**, because its bytes are in a
+ * `_sqlx_migrations` checksum on disk. A table added to the local library
+ * arrives as a new migration below, never by widening this list.
  */
-export const LOCAL_TABLE_NAMES = [
+export const V1_TABLE_NAMES = [
   'notes',
   'folders',
   'tags',
@@ -65,6 +64,28 @@ export const LOCAL_TABLE_NAMES = [
   'idMap',
   'meta',
 ] as const;
+
+/**
+ * Migration 2 (Phase 8 WP6, signed off 2026-08-05): the two tables a **local**
+ * library holds and a signed-in cache does not.
+ *
+ * Version history and saved Recall answers are local mode's own content — they
+ * have no server row behind them and never sync — and until now they existed
+ * only as Dexie tables on `DemoDatabase`. Moving desktop local mode onto the
+ * SQLite library (`plans/desktop-app.md` §7 item 6) needs them here, or the
+ * port silently drops two shipped features. Widening the table set was the
+ * explicit alternative to inventing a second store, and it is additive: nothing
+ * about the op or precondition vocabulary changes.
+ */
+export const V2_TABLE_NAMES = ['note_versions', 'recalls'] as const;
+
+/**
+ * Every table a batch may touch, mirroring `TableName` in
+ * `apps/web/src/data/local-store.ts`. Declared here rather than imported
+ * because `packages/core` never imports app code; a test in `apps/web` pins
+ * the two lists together.
+ */
+export const LOCAL_TABLE_NAMES = [...V1_TABLE_NAMES, ...V2_TABLE_NAMES] as const;
 
 export type LocalTableName = (typeof LOCAL_TABLE_NAMES)[number];
 
@@ -278,6 +299,54 @@ export const LOCAL_STORE_SQLITE_SCHEMA: Readonly<Record<LocalTableName, SqliteTa
     autoKey: null,
     indexes: [],
   },
+  // NoteVersion (packages/core index.ts), as local mode captures it: the note's
+  // *previous* title/body, snapshotted before an edit. No `sync_seq` column, and
+  // that is the shape rather than an omission — a local version has no server
+  // row it could be a revision of, and the conditional ops are confined to the
+  // four synced tables anyway.
+  note_versions: {
+    columns: {
+      id: TEXT,
+      note_id: TEXT,
+      user_id: TEXT,
+      title: TEXT,
+      body: TEXT,
+      created_at: TEXT,
+      updated_at: TEXT,
+      deleted_at: TEXT_NULL,
+    },
+    primaryKey: ['id'],
+    autoKey: null,
+    // The one Dexie declares, and for the same reason: history is listed per
+    // note, and the coalescing lookup reads that same note's rows. Ordering by
+    // created_at happens in memory — a note has a handful of versions.
+    indexes: [{ name: 'idx_note_versions_note_id', columns: ['note_id'] }],
+  },
+  // Recall (packages/core index.ts) as local mode stores it: a retrieval run
+  // with an empty `answer`, or a BYO run carrying one the user's own provider
+  // generated. `search_embedding` is server-only and absent here, exactly as it
+  // is absent from the Dexie table.
+  recalls: {
+    columns: {
+      id: TEXT,
+      user_id: TEXT,
+      query: TEXT,
+      answer: TEXT,
+      // The matched notes, `[{id, title}]` — read whole, mapped over, never
+      // compared. Same treatment as the outbox payload.
+      sources: { type: 'TEXT', nullable: false, json: true },
+      pinned_at: TEXT_NULL,
+      created_at: TEXT,
+      updated_at: TEXT,
+      deleted_at: TEXT_NULL,
+    },
+    primaryKey: ['id'],
+    autoKey: null,
+    // None, matching Dexie's `'id'`-only declaration: the list filters, sorts
+    // and searches a handful of rows in memory, so an index would cost more
+    // than the scan.
+    indexes: [],
+  },
 };
 
 /**
@@ -483,6 +552,17 @@ export const DDL_HEADER = `-- GENERATED FILE — do not edit.
 -- declares these relationships); this database is a projection of it. sqlx's
 -- default \`foreign_keys=ON\` is therefore harmless: there are none to enforce.`;
 
+/** Migration 2's own preamble: why two tables arrive after the first eight. */
+const V2_NOTE = `-- Phase 8 WP6: the two tables a LOCAL library holds and a signed-in cache does
+-- not. Local version history and saved Recall answers are local mode's own
+-- content — no server row stands behind either, and neither ever syncs — so
+-- they carry no sync_seq and the pull's conditional ops cannot target them.
+--
+-- A separate migration rather than an edit to 0001: that file's checksum is
+-- already recorded in _sqlx_migrations on every library on disk, and sqlx
+-- refuses to open a database whose applied migration no longer matches. Purely
+-- additive, so an existing library migrates forward with every row intact.`;
+
 function quote(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
@@ -518,11 +598,16 @@ export function renderTableSql(table: string, schema: SqliteTableSchema): string
   return [create, ...indexes].join('\n');
 }
 
-/** The v1 DDL body: the eight tables in declaration order. */
-export function renderSchemaSql(): string {
-  return LOCAL_TABLE_NAMES.map((table) =>
-    renderTableSql(table, LOCAL_STORE_SQLITE_SCHEMA[table]),
-  ).join('\n\n');
+/**
+ * The DDL body for `tables`, in the order given — the whole schema by default,
+ * and one migration's slice of it when a caller names one.
+ */
+export function renderSchemaSql(
+  tables: readonly LocalTableName[] = LOCAL_TABLE_NAMES,
+): string {
+  return tables
+    .map((table) => renderTableSql(table, LOCAL_STORE_SQLITE_SCHEMA[table]))
+    .join('\n\n');
 }
 
 /**
@@ -536,7 +621,12 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
     description: 'local_store_schema',
-    sql: `${DDL_HEADER}\n\n${renderSchemaSql()}\n`,
+    sql: `${DDL_HEADER}\n\n${renderSchemaSql(V1_TABLE_NAMES)}\n`,
+  },
+  {
+    version: 2,
+    description: 'local_versions_and_recalls',
+    sql: `${DDL_HEADER}\n\n${V2_NOTE}\n\n${renderSchemaSql(V2_TABLE_NAMES)}\n`,
   },
 ];
 
