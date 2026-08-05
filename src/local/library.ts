@@ -75,11 +75,13 @@ function scalar(db: SqliteDatabase, sql: string): unknown {
  *
  * @param dir the config root (`configDir()`), honoring `JOTNOW_CONFIG_DIR`
  *   exactly as the key file does — which is what makes the two-process test
- *   harness possible without touching a developer's real library (§5.1).
- *   The desktop app does NOT honor it: `pointer.rs` writes to the real
- *   `~/.jotnow/` unconditionally, so overriding the dir hides the app's
- *   pointer and local mode reads as "not set up" — deliberate for tests,
- *   documented in the README for everyone else.
+ *   harness possible without touching a developer's real library (§5.1: the
+ *   override moves the root for *both* processes, `library.rs`'s
+ *   `config_root`). The catch worth knowing, and the reason the README warns
+ *   against setting it by hand: the app reads the variable from **its own**
+ *   environment, and an app launched from the Start menu inherits nothing a
+ *   shell exported — so a hand-set override usually moves the CLI alone, and
+ *   local mode then reads as "not set up".
  */
 export function openLocalLibrary(dir: string): LocalLibrary {
   const pointer = readPointer(dir);

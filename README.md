@@ -129,7 +129,7 @@ choose (or set `JOTNOW_MODE` per command).
 
 - `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk.
 - `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting
-- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app always publishes its local-library pointer to the real `~/.jotnow`, so overriding this hides it — local mode won't be detected.
+- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app reads the same variable from *its own* environment, and an app launched from the Start menu or a shortcut does not inherit a variable you export in a shell — so setting it here usually points the CLI at a directory with no local-library pointer in it, and local mode won't be detected.
 - `JOTNOW_MODE`: `local` or `account` for a single command; overrides the choice stored by `jotnow use`
 
 `jotnow key` stores the key in `~/.jotnow/config.json` (or `$JOTNOW_CONFIG_DIR/config.json`), created with permissions that only your user can read.
