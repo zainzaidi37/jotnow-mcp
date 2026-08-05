@@ -118,6 +118,23 @@ export interface SqliteColumn {
 export interface SqliteIndex {
   readonly name: string;
   readonly columns: readonly string[];
+  /**
+   * True when Dexie serves this index **only as a compound**, with no
+   * standalone index on its leftmost column.
+   *
+   * The asymmetry this records is real and it is the reason the flag exists:
+   * SQLite answers a leftmost-prefix lookup from a compound index, and
+   * **IndexedDB does not** — a `where('table')` against a Dexie schema that
+   * only declares `[table+key]` throws `SchemaError`. So a column that looks
+   * indexed here can be unqueryable there, which is precisely the engine
+   * divergence {@link LOCAL_STORE_INDEXED_COLUMNS} exists to prevent.
+   *
+   * Set from the Dexie declarations in `apps/web/src/data/db.ts`, which this
+   * package cannot import; a test in `apps/web` runs a real `listBy` for every
+   * column the list admits, so a wrong flag fails there rather than on a user's
+   * desktop.
+   */
+  readonly dexieCompoundOnly?: true;
 }
 
 export interface SqliteTableSchema {
@@ -271,8 +288,10 @@ export const LOCAL_STORE_SQLITE_SCHEMA: Readonly<Record<LocalTableName, SqliteTa
     primaryKey: ['seq'],
     autoKey: 'seq',
     indexes: [
-      // The sibling-intent guard and the pull-vs-pending-intent lock.
-      { name: 'idx_outbox_table_key', columns: ['table', 'key'] },
+      // The sibling-intent guard and the pull-vs-pending-intent lock. Dexie
+      // declares this one as `[table+key]` and nothing standalone on `table`,
+      // so an indexed read may not filter on it — see `dexieCompoundOnly`.
+      { name: 'idx_outbox_table_key', columns: ['table', 'key'], dexieCompoundOnly: true },
       // Descendant rebasing, and listOutbox by intentId (leftmost prefix).
       { name: 'idx_outbox_intentId_revision', columns: ['intentId', 'revision'] },
       // Crash reclamation, and any scan by state alone (leftmost prefix).
@@ -429,6 +448,53 @@ export const LOCAL_STORE_REQUIRED_COLUMNS: Readonly<Record<LocalTableName, reado
   Object.fromEntries(
     LOCAL_TABLE_NAMES.map((table) => [table, requiredColumnsFor(LOCAL_STORE_COLUMN_MAP[table])]),
   ) as Record<LocalTableName, readonly string[]>;
+
+/**
+ * The columns of `table` an indexed read may filter on — the **intersection of
+ * what both engines serve from an index**, never the union.
+ *
+ * Three rules, and the third is the one that bites:
+ *
+ * 1. The leftmost column of a declared index. A filter on a *later* column is a
+ *    full scan in SQLite and inexpressible in Dexie — divergence arriving as a
+ *    performance cliff rather than a wrong answer.
+ * 2. A single-column primary key, which is an index in both engines (Dexie's
+ *    own primary key, SQLite's PK index) and reads the same way. A compound key
+ *    is excluded: pair-key handling is where the two engines differ most, and
+ *    nothing needs the lookup.
+ * 3. **Not the leftmost column of an index Dexie holds only as a compound**
+ *    ({@link SqliteIndex.dexieCompoundOnly}). SQLite serves such a lookup from
+ *    the compound index and IndexedDB throws `SchemaError`, so admitting it
+ *    would give the desktop a read the browser cannot perform at all. `outbox`
+ *    is the live case: Dexie declares `[table+key]` with no standalone `table`,
+ *    while `intentId` and `state` *are* declared standalone there and so stay
+ *    admissible even though SQLite serves them from compounds.
+ *
+ * This is what keeps the structural indexed read (`plans/desktop-app.md` §7 item
+ * 6, PR B2) from becoming a general query surface — a caller may name a column
+ * the schema indexes on both engines, and nothing else — and both sides pin the
+ * resulting set literally, so adding an index forces a conscious decision here
+ * rather than silently widening a read surface.
+ */
+export const LOCAL_STORE_INDEXED_COLUMNS: Readonly<Record<LocalTableName, readonly string[]>> =
+  Object.fromEntries(
+    LOCAL_TABLE_NAMES.map((table) => {
+      const schema = LOCAL_STORE_SQLITE_SCHEMA[table];
+      const columns = new Set(
+        schema.indexes
+          .filter((index) => index.dexieCompoundOnly !== true)
+          .map((index) => index.columns[0]!),
+      );
+      if (schema.primaryKey.length === 1 && schema.autoKey === null) {
+        columns.add(schema.primaryKey[0]!);
+      }
+      return [table, [...columns]] as const;
+    }),
+  ) as unknown as Record<LocalTableName, readonly string[]>;
+
+export function isLocalStoreIndexedColumn(table: LocalTableName, column: string): boolean {
+  return (LOCAL_STORE_INDEXED_COLUMNS[table] ?? []).includes(column);
+}
 
 /**
  * Whether `column` must hold a value on `table` — the question a `put` asks of
