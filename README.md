@@ -106,12 +106,31 @@ jotnow recent 10
 
 Everything above also works without a global install by prefixing `npx`, e.g. `npx jotnow recent` — `npx jotnow key` stores the key the same way.
 
+## Local mode
+
+If you use the Jotnow desktop app, `jotnow` can write jots straight into its
+local library instead of your account — no API key, no network:
+
+```bash
+jotnow use local      # write to the desktop app's local library
+jotnow use account    # write to your jotnow account
+jotnow where          # show which library jots go to, and why
+```
+
+Local mode requires the desktop app (it creates and owns the library — the CLI
+never creates one). Only `jotnow add` and the MCP `jot` tool work locally;
+search, recall, get and recent live in the app. If both a local library and an
+API key are set up and no mode has been chosen, `jotnow` refuses with a hard
+error rather than guessing where your jots belong — run `jotnow use` once to
+choose (or set `JOTNOW_MODE` per command).
+
 
 ## Environment variables
 
 - `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk.
 - `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting
-- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`)
+- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app always publishes its local-library pointer to the real `~/.jotnow`, so overriding this hides it — local mode won't be detected.
+- `JOTNOW_MODE`: `local` or `account` for a single command; overrides the choice stored by `jotnow use`
 
 `jotnow key` stores the key in `~/.jotnow/config.json` (or `$JOTNOW_CONFIG_DIR/config.json`), created with permissions that only your user can read.
 
@@ -119,7 +138,7 @@ The npm package contains no account credentials or service-role secret. Each ins
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 22.13 or newer (Node 23 needs 23.4+). The floor is local mode's (`node:sqlite`); account mode still runs on Node 18+.
 
 ## License
 

@@ -1,7 +1,8 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { ApiError, type FullNote, type NotesApi, type SearchHit } from './api.js';
+import { ApiError, type FullNote, type SearchHit } from './api.js';
+import type { JotBackend } from './backend.js';
 import { detectRepoTag } from './tagging.js';
 
 // Every tool description leads with an explicit-invocation contract ("jot" /
@@ -45,7 +46,10 @@ function textResult(text: string) {
 }
 
 function errorResult(error: unknown) {
-  const message = error instanceof ApiError ? error.message : String(error);
+  // `Error` as well as `ApiError`: local mode's refusals (§5.3/§5.4) are
+  // written to be read by a person through the agent, and `String(error)`
+  // would prefix them with the class name.
+  const message = error instanceof ApiError || error instanceof Error ? error.message : String(error);
   return { content: [{ type: 'text' as const, text: `Error: ${message}` }], isError: true };
 }
 
@@ -54,7 +58,7 @@ export interface ServerOptions {
   repoTag?: string | null;
 }
 
-export function buildServer(api: NotesApi, version: string, options: ServerOptions = {}): McpServer {
+export function buildServer(api: JotBackend, version: string, options: ServerOptions = {}): McpServer {
   const repoTag = options.repoTag === undefined ? detectRepoTag() : options.repoTag;
   let tagVocabulary: string[] | undefined;
   const server = new McpServer({ name: 'jotnow', version });
@@ -219,6 +223,6 @@ export function buildServer(api: NotesApi, version: string, options: ServerOptio
   return server;
 }
 
-export async function serveStdio(api: NotesApi, version: string): Promise<void> {
+export async function serveStdio(api: JotBackend, version: string): Promise<void> {
   await buildServer(api, version).connect(new StdioServerTransport());
 }

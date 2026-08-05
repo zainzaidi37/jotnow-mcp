@@ -1,6 +1,10 @@
 import { ApiError, NotesApi, type RecallMatch, type SearchHit, type SearchResult } from './api.js';
-import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
-import { configDir, saveStoredKey } from './configFile.js';
+import { resolveBackend, serveBackend } from './backend.js';
+import { API_KEY_PATTERN, DEFAULT_API_URL } from './config.js';
+import { configDir, saveStoredKey, saveStoredMode, type JotnowMode } from './configFile.js';
+import { openLocalLibrary } from './local/library.js';
+import { pointerExists, pointerPath } from './local/pointer.js';
+import { resolveMode } from './mode.js';
 import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { serveStdio } from './server.js';
 
@@ -22,15 +26,23 @@ Usage:
                                  validate a key and print the MCP config block
   jotnow key
                                  store your API key for this machine (input hidden)
+  jotnow use local|account       choose where jots are written on this machine
+  jotnow where                   show which library jots go to, and why
 
 Environment:
   JOTNOW_API_KEY   API key from the web app (Settings → API keys); overrides
                    any key stored by \`jotnow key\`
   JOTNOW_API_URL   override the API endpoint (defaults to production)
+  JOTNOW_MODE      local|account for a single command; overrides \`jotnow use\`
 
 A key stored by \`jotnow key\` lives in ~/.jotnow/config.json (or
 JOTNOW_CONFIG_DIR if set) and is used automatically when JOTNOW_API_KEY is
 unset.
+
+Local mode writes to the jotnow desktop app's local library instead of your
+account. It needs the desktop app (which creates that library), and only
+\`jotnow add\` and the MCP jot tool work there — search, recall, get and recent
+live in the app.
 `;
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
@@ -137,6 +149,80 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
   console.log('\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.');
 }
 
+/**
+ * `jotnow use local|account` — §5.4's persisted rung.
+ *
+ * Writes `mode` into the existing `config.json` and leaves `version` at 1: an
+ * older installed CLI ignores an unknown key, and would fail on every
+ * invocation if the version moved.
+ */
+function runUse(positional: string[], env: NodeJS.ProcessEnv): void {
+  const wanted = positional[0];
+  if (wanted !== 'local' && wanted !== 'account') {
+    throw new Error('usage: jotnow use local|account');
+  }
+  const mode: JotnowMode = wanted;
+  const dir = configDir(env);
+  saveStoredMode(mode, dir);
+  console.log(
+    mode === 'local'
+      ? "Saved — jots from this machine now go to the desktop app's local library. Run `jotnow where` to see which file."
+      : 'Saved — jots from this machine now go to your jotnow account.',
+  );
+  if (mode === 'local' && !pointerExists(dir)) {
+    // The choice is recorded either way — the pointer appears on the next
+    // desktop launch — but saying "Saved" alone would read as "working".
+    console.log(
+      'Note: no local library exists here yet — run the jotnow desktop app once to create it.',
+    );
+  }
+}
+
+/**
+ * `jotnow where` — required by §5.4, because mode selection that cannot be
+ * inspected gets mis-diagnosed as data loss.
+ *
+ * It prints the resolved target *and* the rung that decided, and it reports
+ * problems instead of raising them: this is the command someone runs when
+ * something is already wrong, so an ambiguous machine and a dangling library
+ * both have to print their explanation rather than a stack of one line.
+ */
+function runWhere(env: NodeJS.ProcessEnv): void {
+  let resolution;
+  try {
+    resolution = resolveMode(env);
+  } catch (error) {
+    console.log(`mode:   unresolved`);
+    console.log(`why:    ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`mode:   ${resolution.mode}`);
+  console.log(`why:    ${resolution.why}`);
+  console.log(`config: ${configDir(env)}`);
+
+  if (resolution.mode === 'account') {
+    console.log(`target: ${env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL}`);
+    return;
+  }
+
+  console.log(`pointer: ${pointerPath(resolution.dir)}`);
+  try {
+    const library = openLocalLibrary(resolution.dir);
+    try {
+      console.log(`target: ${library.path}`);
+      console.log(`library: workspace ${library.workspaceId}, schema version ${library.schemaVersion}`);
+    } finally {
+      library.close();
+    }
+  } catch (error) {
+    console.log(`target: unavailable`);
+    console.log(`error:  ${error instanceof Error ? error.message : String(error)}`);
+    process.exitCode = 1;
+  }
+}
+
 export interface RunKeyDeps {
   env?: NodeJS.ProcessEnv;
   // Bypasses the real prompt entirely — used by orchestration tests that
@@ -208,7 +294,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         console.log(HELP);
         return;
       }
-      await serveStdio(new NotesApi(resolveConfig()), VERSION);
+      await serveStdio(serveBackend(process.env), VERSION);
       return;
     }
 
@@ -220,11 +306,17 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       case 'key':
         await runKey();
         return;
+      case 'use':
+        runUse(positional, process.env);
+        return;
+      case 'where':
+        runWhere(process.env);
+        return;
       case 'add': {
         const title = positional[0];
         if (!title) throw new Error('usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]');
         const body = flags.get('body') ?? (process.stdin.isTTY ? '' : await readStdin());
-        const api = new NotesApi(resolveConfig());
+        const api = resolveBackend(process.env).backend;
         const note = await api.saveNote({
           title,
           body,
@@ -242,19 +334,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       case 'search': {
         const query = positional.join(' ').trim();
         if (!query) throw new Error('usage: jotnow search <query>');
-        printSearch(await new NotesApi(resolveConfig()).searchNotes(query), query);
+        printSearch(await resolveBackend(process.env).backend.searchNotes(query), query);
         return;
       }
       case 'recall': {
         const query = positional.join(' ').trim();
         if (!query) throw new Error('usage: jotnow recall <query>');
-        printRecall(await new NotesApi(resolveConfig()).recallNotes(query), query);
+        printRecall(await resolveBackend(process.env).backend.recallNotes(query), query);
         return;
       }
       case 'get': {
         const id = positional[0];
         if (!id) throw new Error('usage: jotnow get <id>');
-        const note = await new NotesApi(resolveConfig()).getNote(id);
+        const note = await resolveBackend(process.env).backend.getNote(id);
         const tags = note.tags.map(terminalSafe).join(', ') || 'none';
         console.log(`${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`);
         console.log('');
@@ -264,7 +356,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       case 'recent': {
         const limit = positional[0] ? Number.parseInt(positional[0], 10) : 10;
         if (Number.isNaN(limit)) throw new Error('usage: jotnow recent [n]');
-        (await new NotesApi(resolveConfig()).listRecentNotes(limit)).forEach(printHit);
+        (await resolveBackend(process.env).backend.listRecentNotes(limit)).forEach(printHit);
         return;
       }
       case 'help':

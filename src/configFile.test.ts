@@ -57,6 +57,16 @@ describe('configFile', () => {
     expect(() => loadStoredKey(dir)).toThrow(file);
   });
 
+  it('`jotnow key` over a corrupt file recreates it — it is the documented repair path', () => {
+    // The corrupt-file error says "Run `jotnow key` to recreate it", so the
+    // write commands must never be blocked by the state they exist to repair.
+    const file = configFilePath(dir);
+    writeFileSync(file, '{ not valid json');
+    saveStoredKey(GOOD_KEY, dir);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, apiKey: GOOD_KEY });
+    expect(loadStoredKey(dir)).toBe(GOOD_KEY);
+  });
+
   posixOnly('tightens loose file perms to 0600, warns on stderr, and still returns the key', () => {
     saveStoredKey(GOOD_KEY, dir);
     chmodSync(configFilePath(dir), 0o644);

@@ -1,0 +1,93 @@
+// TEST HELPER — excluded from the build (`tsconfig.build.json`).
+//
+// Builds a local library the way the desktop app does, because the CLI
+// deliberately cannot: §5.3 gives creation, WAL and migration to the app alone.
+// Everything here mirrors `apps/desktop/src-tauri/src/library.rs` — the
+// canonical migrations from the vendored core, a `_sqlx_migrations` history,
+// and the one `meta` key that is ever minted — plus PR A's pointer file.
+
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { join } from 'node:path';
+import { SQLITE_MIGRATIONS } from '../core/index.js';
+import { pointerPath } from './pointer.js';
+import type { SqliteDatabaseConstructor } from './runtime.js';
+
+export const DatabaseSync = (createRequire(import.meta.url)('node:sqlite') as {
+  DatabaseSync: SqliteDatabaseConstructor;
+}).DatabaseSync;
+
+export const FIXTURE_WORKSPACE = '11111111-1111-4111-8111-111111111111';
+
+export const LATEST_SCHEMA_VERSION = SQLITE_MIGRATIONS.reduce(
+  (max, migration) => Math.max(max, migration.version),
+  0,
+);
+
+export interface LibraryFixtureOptions {
+  readonly workspaceId?: string;
+  /** Migrations are applied up to this version; a higher one is recorded only. */
+  readonly schemaVersion?: number;
+  /** `false` leaves the file in the default rollback journal — the corrupt case. */
+  readonly wal?: boolean;
+  readonly publishPointer?: boolean;
+  readonly pointer?: Partial<{
+    version: number;
+    db_path: string;
+    workspace_uuid: string;
+    schema_version: number;
+  }>;
+}
+
+export interface LibraryFixture {
+  readonly dir: string;
+  readonly dbPath: string;
+  readonly workspaceId: string;
+  readonly schemaVersion: number;
+}
+
+export function makeLibraryFixture(dir: string, options: LibraryFixtureOptions = {}): LibraryFixture {
+  const workspaceId = options.workspaceId ?? FIXTURE_WORKSPACE;
+  const schemaVersion = options.schemaVersion ?? LATEST_SCHEMA_VERSION;
+  const dbPath = join(dir, 'local', 'library.db');
+  mkdirSync(join(dir, 'local'), { recursive: true });
+
+  const db = new DatabaseSync(dbPath);
+  if (options.wal !== false) db.exec('PRAGMA journal_mode = WAL');
+  db.exec(
+    `CREATE TABLE "_sqlx_migrations" (version BIGINT PRIMARY KEY, description TEXT NOT NULL, ` +
+      `installed_on TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, success BOOLEAN NOT NULL, ` +
+      `checksum BLOB NOT NULL, execution_time BIGINT NOT NULL)`,
+  );
+  const record = db.prepare(
+    `INSERT INTO "_sqlx_migrations" (version, description, success, checksum, execution_time) ` +
+      `VALUES (?, ?, 1, x'00', 0)`,
+  );
+  for (const migration of SQLITE_MIGRATIONS) {
+    if (migration.version > schemaVersion) break;
+    db.exec(migration.sql);
+    record.run(migration.version, migration.description);
+  }
+  if (schemaVersion > LATEST_SCHEMA_VERSION) record.run(schemaVersion, 'from_the_future');
+  db.prepare(`INSERT INTO "meta" ("key", "value") VALUES ('workspace_uuid', ?)`).run(workspaceId);
+  db.close();
+
+  if (options.publishPointer !== false) {
+    writeFileSync(
+      pointerPath(dir),
+      `${JSON.stringify(
+        {
+          version: 1,
+          db_path: dbPath,
+          workspace_uuid: workspaceId,
+          schema_version: schemaVersion,
+          ...options.pointer,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  }
+
+  return { dir, dbPath, workspaceId, schemaVersion };
+}
