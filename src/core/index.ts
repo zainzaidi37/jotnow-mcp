@@ -161,9 +161,7 @@ export const ExportManifestV2Schema = z
     history: z
       .object({
         included: z.boolean(),
-        reason: z
-          .enum(['excluded', 'offline', 'unavailable', 'recording-off'])
-          .optional(),
+        reason: z.enum(['excluded', 'offline', 'unavailable', 'recording-off']).optional(),
       })
       .strict(),
   })
@@ -347,12 +345,22 @@ export const TidyRunSchema = z.object({
 export type TidyRun = z.infer<typeof TidyRunSchema>;
 
 /**
- * What the confirm card shows. Denormalized names only — no ids — because the
- * UI renders it as plain text. The last three fields are zero-defaulted: the
- * manual pause happens before assignments are planned and cannot know them.
+ * What the confirm card shows. Everything *rendered* is a denormalized name,
+ * because the UI renders it as plain text. The one id here is never displayed:
+ * a merge is approved by its winner (`merge_winner_ids` on the confirm request)
+ * and names are not a key — two tags can differ only by case, and a winner can
+ * be a tag the same plan is about to create, so it has no id the client could
+ * look up locally. The last three fields are zero-defaulted: the manual pause
+ * happens before assignments are planned and cannot know them.
  */
 export const TidyPendingSummarySchema = z.object({
-  merges: z.array(z.object({ winner_name: z.string(), loser_names: z.array(z.string()) })),
+  merges: z.array(
+    z.object({
+      winner_tag_id: uuid,
+      winner_name: z.string(),
+      loser_names: z.array(z.string()),
+    }),
+  ),
   create_folders: z.array(z.object({ name: z.string() })),
   create_tags: z.array(z.object({ name: z.string() })),
   moves_by_destination: z
