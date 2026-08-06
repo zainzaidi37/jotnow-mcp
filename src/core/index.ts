@@ -17,6 +17,16 @@ const uuid = z.string().uuid();
 const timestamptz = z.string().datetime({ offset: true });
 
 /**
+ * A jsonb column whose shape belongs to its writer. Deliberately not
+ * `z.unknown()`: that accepts *any* value including `undefined`, which makes
+ * the object key optional, so a row missing the column entirely would parse.
+ * A jsonb column is always present in a server row — null or a value.
+ */
+const jsonbValue = z.custom<unknown>((value) => value !== undefined, {
+  message: 'Required',
+});
+
+/**
  * The pull cursor's ordering key (plans/sync-cursor-fence.md): the xid8 of the
  * transaction that last wrote the row, as a bigint. Server-set by a Postgres
  * trigger, exactly like `updated_at` — clients never write it.
@@ -297,8 +307,14 @@ export type EmbeddingJob = z.infer<typeof EmbeddingJobSchema>;
 
 // Phase 5 Tidiness. Run and change rows are user content fetched on demand;
 // tidy_jobs is rebuildable server-only queue state.
-export const TIDY_TRIGGERS = ['manual', 'capture'] as const;
-export const TIDY_RUN_STATUSES = ['running', 'applied', 'failed', 'reverted'] as const;
+export const TIDY_TRIGGERS = ['manual', 'capture', 'prompted'] as const;
+export const TIDY_RUN_STATUSES = [
+  'running',
+  'pending_confirm',
+  'applied',
+  'failed',
+  'reverted',
+] as const;
 export const TIDY_CHANGE_KINDS = [
   'create_folder',
   'create_tag',
@@ -317,11 +333,39 @@ export const TidyRunSchema = z.object({
   change_count: z.number().int(),
   skipped_count: z.number().int(),
   error: z.string().nullable(),
+  /** Prompted runs only: the user's words. Always rendered as plain text. */
+  instruction: z.string().nullable(),
+  /** The plan a paused run is holding; shape is owned by the Edge Function. */
+  pending_plan: jsonbValue.nullable(),
+  pending_expires_at: timestamptz.nullable(),
+  /** Stamped by resume_tidy_run — the user's consent to a paused plan. */
+  confirmed_at: timestamptz.nullable(),
   created_at: timestamptz,
   updated_at: timestamptz,
   deleted_at: timestamptz.nullable(),
 });
 export type TidyRun = z.infer<typeof TidyRunSchema>;
+
+/**
+ * What the confirm card shows. Denormalized names only — no ids — because the
+ * UI renders it as plain text. The last three fields are zero-defaulted: the
+ * manual pause happens before assignments are planned and cannot know them.
+ */
+export const TidyPendingSummarySchema = z.object({
+  merges: z.array(z.object({ winner_name: z.string(), loser_names: z.array(z.string()) })),
+  create_folders: z.array(z.object({ name: z.string() })),
+  create_tags: z.array(z.object({ name: z.string() })),
+  moves_by_destination: z
+    .array(z.object({ folder_name: z.string(), count: z.number().int().nonnegative() }))
+    .default([]),
+  retag_note_count: z.number().int().nonnegative().default(0),
+  removal_count: z.number().int().nonnegative().default(0),
+});
+export type TidyPendingSummary = z.infer<typeof TidyPendingSummarySchema>;
+
+/** A planner declining an instruction it cannot serve inside the op vocabulary. */
+export const TidyRefusalSchema = z.object({ refusal: z.string() });
+export type TidyRefusal = z.infer<typeof TidyRefusalSchema>;
 
 const TidyCreateFolderPayloadSchema = z.object({
   kind: z.literal('create_folder'),
@@ -426,6 +470,11 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
       skipped: z.number().int().nonnegative(),
     }),
   }),
+  /** Terminal: the run paused for a human confirm and the stream ends here. */
+  z.object({
+    event: z.literal('pending_confirm'),
+    data: z.object({ runId: uuid, summary: TidyPendingSummarySchema }),
+  }),
   z.object({
     event: z.literal('error'),
     data: z.object({ message: z.string() }),
@@ -433,7 +482,9 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
 ]);
 export type TidyStreamEvent = z.infer<typeof TidyStreamEventSchema>;
 
-const TIDY_STREAM_EVENT_NAMES = new Set(['progress', 'done', 'error']);
+// parseTidyStreamEvent filters through this set: a name missing here is
+// silently dropped, and the client reports "stream ended unexpectedly".
+const TIDY_STREAM_EVENT_NAMES = new Set(['progress', 'done', 'pending_confirm', 'error']);
 
 /** Unknown events are forward-compatible; known events remain strictly validated. */
 export function parseTidyStreamEvent(event: string, data: unknown): TidyStreamEvent | null {
