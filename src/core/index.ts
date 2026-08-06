@@ -371,9 +371,40 @@ export const TidyPendingSummarySchema = z.object({
 });
 export type TidyPendingSummary = z.infer<typeof TidyPendingSummarySchema>;
 
+/**
+ * Which shape of pause a `pending_confirm` run is holding, and therefore which
+ * card the user is owed. A manual pause stops after the taxonomy call and its
+ * ops are individually vetoable; a prompted pause holds a whole planned run and
+ * is all-or-nothing, because its moves and tag removals have no name-shaped
+ * tick-box the approval vocabulary could carry.
+ *
+ * Deliberately *not* on the `pending_confirm` stream event: the client already
+ * knows which mode it started, and the server only ever pauses a manual run as
+ * `manual_taxonomy` and a prompted run as `prompted_full`. Putting it on the
+ * wire would add a field the SPA and the Edge Function have to agree on across
+ * a non-atomic deploy, to say something the client cannot get wrong. Recovery
+ * from a run row reads it off the stored `pending_plan`, which is authoritative.
+ */
+export const TIDY_PENDING_KINDS = ['manual_taxonomy', 'prompted_full'] as const;
+export type TidyPendingKind = (typeof TIDY_PENDING_KINDS)[number];
+
+/**
+ * How long a prompted instruction may be. The enforcing copy is
+ * `supabase/functions/_shared/tidy-plan.ts` (Deno cannot import this package);
+ * this one exists so the client can say the limit before spending a round trip
+ * on a 413. Keep the two in step.
+ */
+export const MAX_TIDY_INSTRUCTION_CHARS = 500;
+
 /** A planner declining an instruction it cannot serve inside the op vocabulary. */
 export const TidyRefusalSchema = z.object({ refusal: z.string() });
 export type TidyRefusal = z.infer<typeof TidyRefusalSchema>;
+
+/** The engine's identity for an `error` frame, when it has one worth telling
+ * apart. `refused` is the planner declining an instruction — an answer, not a
+ * fault, and never a charge. Compared by value at the point of use rather than
+ * enumerated on the wire: see the `error` event's schema. */
+export const TIDY_REFUSED_CODE = 'refused';
 
 const TidyCreateFolderPayloadSchema = z.object({
   kind: z.literal('create_folder'),
@@ -485,7 +516,17 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
   }),
   z.object({
     event: z.literal('error'),
-    data: z.object({ message: z.string() }),
+    /**
+     * Deliberately an open string, not an enum over the codes this build knows.
+     * Both directions of a non-atomic deploy have to keep the engine's message:
+     * an older function omits `code` entirely, and a newer one may send a code
+     * this bundle has never heard of. An enum would reject the second and the
+     * client would replace a real error with "malformed stream data" — which is
+     * exactly the stale-bundle hazard this arc has been careful about. Meaning
+     * is assigned at the point of use, by comparing against
+     * `TIDY_REFUSED_CODE`; anything else is a plain failure.
+     */
+    data: z.object({ message: z.string(), code: z.string().optional() }),
   }),
 ]);
 export type TidyStreamEvent = z.infer<typeof TidyStreamEventSchema>;
