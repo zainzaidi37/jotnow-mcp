@@ -496,9 +496,35 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
   z.object({
     event: z.literal('progress'),
     data: z.object({
-      stage: z.enum(['planning', 'applying']),
+      /**
+       * Widened to an open string. The trap this retires: a *narrower* type
+       * here (an enum over the two values the server emits today) would throw
+       * on a third value a future function adds, and `parseTidyStreamEvent`'s
+       * `.parse` throwing turns a live, still-applying run (`EdgeRuntime.
+       * waitUntil`, §0) into "Tidiness failed — malformed stream data." on any
+       * bundle cached before that deploy. The server itself still emits only
+       * `'planning'` and `'applying'` — enforced by a narrow helper
+       * server-side (`tidy-notes/index.ts`'s `TidyStreamContext.progress`) —
+       * until the 2026 stale bundles have aged out; widening here just means a
+       * value it *does* send one day parses instead of crashing every browser
+       * that hasn't refreshed. See the forward-compat test in index.test.ts.
+       */
+      stage: z.string(),
       done: z.number().int().nonnegative(),
       total: z.number().int().nonnegative(),
+      /**
+       * Which of the three planning/apply sub-steps this event reports on:
+       * `'taxonomy'`, `'assignments'`, or `'applying'`. Optional and open, following the
+       * `error` event's `code` field below in this same union (deliberately
+       * not an enum, for the same non-atomic-deploy reason) — an older function never
+       * sends it, and a newer one may send a phase this bundle has never heard
+       * of. `stage` keeps its old two-value meaning forever: `'taxonomy'` and
+       * `'assignments'` both ride `stage: 'planning'`, so a client that has
+       * never heard of `phase` still shows the right word, just not the finer
+       * one. The client prefers `phase` when it recognizes it and falls back
+       * to `stage` otherwise (`tidyProgressLabel`, `apps/web/.../TidyModal.tsx`).
+       */
+      phase: z.string().optional(),
     }),
   }),
   z.object({
