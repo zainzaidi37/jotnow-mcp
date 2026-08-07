@@ -533,6 +533,31 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
       runId: uuid,
       applied: z.number().int().nonnegative(),
       skipped: z.number().int().nonnegative(),
+      /**
+       * Present only when the applied plan was empty (plans/tidy-transparency.md
+       * §3) — that is the only time a caller needs to say more than `applied`/
+       * `skipped` already do. `reasons` is the honest two-way split the server
+       * can actually derive, since it holds ops, not interpretation:
+       * `reasons: {}` means the planner proposed nothing at all; a non-empty
+       * record means it proposed ops and validation (`TidyDropTally` in
+       * tidy-plan.ts) dropped every one, with per-reason-code counts.
+       *
+       * Deliberately not a field on `taxonomySchema`/`assignmentSchema`: under
+       * `strict: true` every declared property there is required, so a
+       * `reason` field would be one the model has to fill on *every* call —
+       * precisely how the taxonomy call talked itself into the `refusal` veto
+       * that 8b77267 removed. Diagnostics are derived server-side from the
+       * tally, never planner-authored.
+       *
+       * `reasons` is open-keyed (`z.record`), following `error.code`'s and
+       * `phase`'s precedent above: a reason code this bundle has never heard
+       * of parses instead of throwing. No model-authored text crosses the
+       * wire here — only counts and closed-set reason codes — and no
+       * redundant total the client could just sum itself.
+       */
+      diagnostics: z
+        .object({ reasons: z.record(z.string(), z.number().int().nonnegative()) })
+        .optional(),
     }),
   }),
   /** Terminal: the run paused for a human confirm and the stream ends here. */
