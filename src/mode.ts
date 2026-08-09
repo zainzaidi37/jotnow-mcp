@@ -117,8 +117,8 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
   if (localAvailable && accountAvailable) {
     throw new ModeError(
       `both a local library and an API key are set up on this machine, and no mode has been ` +
-        `chosen — jotnow will not guess which one your jots belong in. ` +
-        `Run \`jotnow use account\` to keep writing to your jotnow account, or ` +
+        `chosen — Jotnow will not guess which one your jots belong in. ` +
+        `Run \`jotnow use account\` to keep writing to your Jotnow account, or ` +
         `\`jotnow use local\` to write to the desktop app's local library ` +
         `(or set JOTNOW_MODE for a single command). Nothing was written.`,
     );

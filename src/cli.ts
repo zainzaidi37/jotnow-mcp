@@ -39,7 +39,7 @@ A key stored by \`jotnow key\` lives in ~/.jotnow/config.json (or
 JOTNOW_CONFIG_DIR if set) and is used automatically when JOTNOW_API_KEY is
 unset.
 
-Local mode writes to the jotnow desktop app's local library instead of your
+Local mode writes to the Jotnow desktop app's local library instead of your
 account. It needs the desktop app (which creates that library), and only
 \`jotnow add\` and the MCP jot tool work there — search, recall, get and recent
 live in the app.
@@ -121,7 +121,7 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
     throw new Error(
       key === ''
         ? 'pass your API key: npx jotnow init --key jn_live_... (create one in Settings → API keys)'
-        : 'that key does not look like a jotnow key (expected jn_live_ + 43 characters)',
+        : 'that key does not look like a Jotnow key (expected jn_live_ + 43 characters)',
     );
   }
   const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;
@@ -167,13 +167,13 @@ function runUse(positional: string[], env: NodeJS.ProcessEnv): void {
   console.log(
     mode === 'local'
       ? "Saved — jots from this machine now go to the desktop app's local library. Run `jotnow where` to see which file."
-      : 'Saved — jots from this machine now go to your jotnow account.',
+      : 'Saved — jots from this machine now go to your Jotnow account.',
   );
   if (mode === 'local' && !pointerExists(dir)) {
     // The choice is recorded either way — the pointer appears on the next
     // desktop launch — but saying "Saved" alone would read as "working".
     console.log(
-      'Note: no local library exists here yet — run the jotnow desktop app once to create it.',
+      'Note: no local library exists here yet — run the Jotnow desktop app once to create it.',
     );
   }
 }
@@ -253,13 +253,13 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
         input,
         output: deps.output ?? stdout,
         isTTY: deps.isTTY ?? Boolean((input as unknown as { isTTY?: boolean }).isTTY),
-        prompt: 'Paste your jotnow API key (input hidden): ',
+        prompt: 'Paste your Jotnow API key (input hidden): ',
       });
     });
 
   const key = await readHidden();
   if (!API_KEY_PATTERN.test(key)) {
-    throw new Error('that does not look like a jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
+    throw new Error('that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
   }
 
   const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;

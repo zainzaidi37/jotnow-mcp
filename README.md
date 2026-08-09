@@ -1,4 +1,4 @@
-# jotnow
+# Jotnow
 Tell your agent to "jot that down" and it's saved to your account at [jotnow.dev](https://jotnow.dev): tagged, searchable, exportable. Works with Claude Code, Codex, and any other MCP client, plus a terminal CLI.
 
 Free to sign in, and use. Export all your notes in markdown anytime, no vendor-lockin.
@@ -63,13 +63,13 @@ Otherwise, configure a key directly in the MCP config (what `jotnow init` prints
 
 ### Codex
 
-After storing your key with `jotnow key`, add JotNow to Codex:
+After storing your key with `jotnow key`, add Jotnow to Codex:
 
 ```bash
 codex mcp add jotnow -- npx -y jotnow
 ```
 
-Codex stores MCP configuration in `~/.codex/config.toml`. The Codex CLI, IDE extension, and desktop app share this configuration. To configure JotNow manually instead of using `codex mcp add`, add:
+Codex stores MCP configuration in `~/.codex/config.toml`. The Codex CLI, IDE extension, and desktop app share this configuration. To configure Jotnow manually instead of using `codex mcp add`, add:
 
 ```toml
 [mcp_servers.jotnow]

@@ -405,7 +405,7 @@ describe('buildServer', () => {
 
   it('jot lists the "save …" phrasings as explicit invocations', () => {
     const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
-    expect(tools.jot!.description).toMatch(/"save it to jotnow"/);
+    expect(tools.jot!.description).toMatch(/"save it to Jotnow"/);
     expect(tools.jot!.description).toMatch(/"save (it as a|this as a) jot"/);
     expect(tools.jot!.description).toMatch(/"save jot"/);
     expect(tools.jot!.description).toMatch(/bare "jot"/);
