@@ -2,7 +2,9 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
+import { createRequire } from 'node:module';
 import { ApiError, NotesApi } from './api.js';
+import { VERSION } from './cli.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
 import { saveStoredKey } from './configFile.js';
 import { buildServer } from './server.js';
@@ -336,6 +338,18 @@ describe('cli recall', () => {
       vi.unstubAllGlobals();
     }
     expect(logs.join('\n')).toContain('No jots matched "nothing here" by meaning.');
+  });
+});
+
+describe('VERSION', () => {
+  // It drifted once and nothing noticed: the constant said 0.3.0 while npm
+  // shipped 0.4.0, so every MCP client was told the wrong `serverInfo.version`
+  // in its initialize handshake. Reading package.json is the fix; this pins it
+  // so a future refactor cannot quietly restate the literal again.
+  it('is the version package.json declares', () => {
+    const pkg = createRequire(import.meta.url)('../package.json') as { version: string };
+    expect(VERSION).toBe(pkg.version);
+    expect(VERSION).toMatch(/^\d+\.\d+\.\d+/);
   });
 });
 
