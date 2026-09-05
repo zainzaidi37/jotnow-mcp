@@ -1,0 +1,36 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.zainzaidi37/jotnow",
+  "title": "Jotnow",
+  "description": "Save agent output as notes, search saved notes, and retrieve them in Claude Code and Codex.",
+  "repository": {
+    "url": "https://github.com/zainzaidi37/jotnow-mcp",
+    "source": "github"
+  },
+  "websiteUrl": "https://jotnow.dev/docs",
+  "version": "0.4.1",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "jotnow",
+      "version": "0.4.1",
+      "transport": { "type": "stdio" },
+      "environmentVariables": [
+        {
+          "name": "JOTNOW_API_KEY",
+          "description": "Account API key from jotnow.dev Settings > API keys. Omit if stored with jotnow key or using desktop local capture.",
+          "format": "string",
+          "isSecret": true,
+          "isRequired": false
+        },
+        {
+          "name": "JOTNOW_MODE",
+          "description": "Choose account for account tools or local for desktop capture only. Required if both are configured without a saved mode choice.",
+          "format": "string",
+          "choices": ["account", "local"],
+          "isRequired": false
+        }
+      ]
+    }
+  ]
+}

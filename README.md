@@ -3,6 +3,13 @@ Tell your agent to "jot that down" and it's saved to your account at [jotnow.dev
 
 Free to sign in, and use. Export all your notes in markdown anytime, no vendor-lockin.
 
+[Documentation](https://jotnow.dev/docs) · [Claude Code setup](https://jotnow.dev/docs/claude-code) · [Codex setup](https://jotnow.dev/docs/codex) · [MCP tool reference](https://jotnow.dev/docs/mcp-tools)
+
+Jotnow runs as a local stdio MCP server. Account mode connects to the Jotnow
+API; desktop local mode supports capture only. Notes are saved when you ask
+your agent to call the tool; this server does not automatically record chats.
+The MCP server and CLI in this repository are MIT licensed.
+
 ## Setup
 
 1. Sign up (free) at [jotnow.dev](https://jotnow.dev), then open the confirmation email; its link
@@ -81,7 +88,7 @@ The server provides these tools:
 
 - `jot`: save a note
 - `find_jots`: search notes by keyword
-- `recall_jots`: search notes by meaning (Pro)
+- `recall_jots`: search notes by meaning (account mode, Pro). Browser Recall with your own model key does not unlock this MCP tool.
 - `get_jot`: read one note by ID or short ID prefix
 - `list_recent_jots`: list recently updated notes
 
