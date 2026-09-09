@@ -319,6 +319,7 @@ export const TIDY_CHANGE_KINDS = [
   'move_note',
   'retag_note',
   'merge_tags',
+  'rename_note',
 ] as const;
 
 export const TidyRunSchema = z.object({
@@ -368,8 +369,83 @@ export const TidyPendingSummarySchema = z.object({
     .default([]),
   retag_note_count: z.number().int().nonnegative().default(0),
   removal_count: z.number().int().nonnegative().default(0),
+  /** Present on new prompted pauses. Absent means a recovered legacy pause
+   * whose assignment half can only be approved as a whole. */
+  note_changes: z
+    .array(
+      z.object({
+        note_id: uuid,
+        note_title: z.string(),
+        from_folder_name: z.string(),
+        to_folder_name: z.string(),
+        added_tag_names: z.array(z.string()),
+        /** The subset of `added_tag_names` this plan creates, and whether the
+         * destination folder is one of its own creations. The confirm leg
+         * matches a declined creation by *id*, so a card that matched by name
+         * would disable notes bound to a pre-existing folder or tag that merely
+         * shares the name. Both are omitted when there is nothing to say. */
+        added_new_tag_names: z.array(z.string()).optional(),
+        to_folder_is_new: z.boolean().optional(),
+        removed_tag_names: z.array(z.string()),
+        from_title: z.string().optional(),
+        to_title: z.string().optional(),
+      }),
+    )
+    .optional(),
+  /** What the run's note scope actually covered, when a clarification answer
+   * narrowed it. `matched` is every note the scope selected; `included` is how
+   * many the 400-note snapshot could carry. The card must say so whenever
+   * `matched > included` — telling a user a partial snapshot covered their
+   * whole library is the dishonesty this field exists to prevent. */
+  scope: z
+    .object({
+      matched: z.number().int().nonnegative(),
+      included: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 export type TidyPendingSummary = z.infer<typeof TidyPendingSummarySchema>;
+
+/**
+ * One clarification question and its options. **Everything here is app-authored
+ * and deterministic — no model call produces it** (`planClarification` in
+ * `supabase/functions/_shared/tidy-clarify.ts`). That is what makes answering
+ * safe: `label` is display text only, and `scope` is the server's own object,
+ * echoed here purely so the client can render and, later, name an option by its
+ * opaque `id`. The confirm leg re-reads the chosen option's scope from the
+ * stored `pending_plan` row and never from the request, so an answer can only
+ * ever *narrow* the note set the planner is shown. Multiple-choice UI is not
+ * an injection defense; re-reading the scope server-side is.
+ *
+ * The ids are opaque and per-pause. Scopes are visible to the client, which is
+ * fine — they name the user's own folders and tags.
+ */
+export const TidyClarifyScopeSchema = z.object({
+  folder_ids: z.array(uuid).optional(),
+  tag_ids: z.array(uuid).optional(),
+  titles: z.enum(['untitled', 'all']).optional(),
+  notes: z.enum(['unfiled', 'all']).optional(),
+});
+export type TidyClarifyScope = z.infer<typeof TidyClarifyScopeSchema>;
+
+export const TidyClarifyQuestionSchema = z.object({
+  id: z.string().min(1),
+  prompt: z.string(),
+  options: z
+    .array(z.object({ id: z.string().min(1), label: z.string(), scope: TidyClarifyScopeSchema }))
+    .min(2)
+    .max(4),
+});
+export type TidyClarifyQuestion = z.infer<typeof TidyClarifyQuestionSchema>;
+
+/** At most one round, at most three questions. Both caps are contract, not
+ * taste: `plans/tidy-titles-and-clarification.md` §Product contract. */
+export const TidyClarificationSchema = z.object({
+  instruction: z.string(),
+  questions: z.array(TidyClarifyQuestionSchema).min(1).max(3),
+});
+export type TidyClarification = z.infer<typeof TidyClarificationSchema>;
+
 
 /**
  * Which shape of pause a `pending_confirm` run is holding, and therefore which
@@ -385,7 +461,11 @@ export type TidyPendingSummary = z.infer<typeof TidyPendingSummarySchema>;
  * a non-atomic deploy, to say something the client cannot get wrong. Recovery
  * from a run row reads it off the stored `pending_plan`, which is authoritative.
  */
-export const TIDY_PENDING_KINDS = ['manual_taxonomy', 'prompted_full'] as const;
+export const TIDY_PENDING_KINDS = [
+  'manual_taxonomy',
+  'prompted_full',
+  'prompted_clarify',
+] as const;
 export type TidyPendingKind = (typeof TIDY_PENDING_KINDS)[number];
 
 /**
@@ -453,6 +533,12 @@ const TidyMergeTagsPayloadSchema = z.object({
     }),
   ),
 });
+const TidyRenameNotePayloadSchema = z.object({
+  kind: z.literal('rename_note'),
+  note_id: uuid,
+  from_title: z.string(),
+  to_title: z.string(),
+});
 
 export const TidyChangePayloadSchema = z.discriminatedUnion('kind', [
   TidyCreateFolderPayloadSchema,
@@ -460,6 +546,7 @@ export const TidyChangePayloadSchema = z.discriminatedUnion('kind', [
   TidyMoveNotePayloadSchema,
   TidyRetagNotePayloadSchema,
   TidyMergeTagsPayloadSchema,
+  TidyRenameNotePayloadSchema,
 ]);
 export type TidyChangePayload = z.infer<typeof TidyChangePayloadSchema>;
 
@@ -533,6 +620,7 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
       runId: uuid,
       applied: z.number().int().nonnegative(),
       skipped: z.number().int().nonnegative(),
+      change_counts: z.record(z.string(), z.number().int().nonnegative()).optional(),
       /**
        * Present only when the applied plan was empty (plans/tidy-transparency.md
        * §3) — that is the only time a caller needs to say more than `applied`/
@@ -565,6 +653,15 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
     event: z.literal('pending_confirm'),
     data: z.object({ runId: uuid, summary: TidyPendingSummarySchema }),
   }),
+  /**
+   * Terminal in exactly the same sense: the run paused to ask, and no `done`
+   * follows. A client that treats the stream ending here as a failure would
+   * report an error for a run that is waiting on the user.
+   */
+  z.object({
+    event: z.literal('pending_clarify'),
+    data: z.object({ runId: uuid, questions: z.array(TidyClarifyQuestionSchema) }),
+  }),
   z.object({
     event: z.literal('error'),
     /**
@@ -584,7 +681,13 @@ export type TidyStreamEvent = z.infer<typeof TidyStreamEventSchema>;
 
 // parseTidyStreamEvent filters through this set: a name missing here is
 // silently dropped, and the client reports "stream ended unexpectedly".
-const TIDY_STREAM_EVENT_NAMES = new Set(['progress', 'done', 'pending_confirm', 'error']);
+const TIDY_STREAM_EVENT_NAMES = new Set([
+  'progress',
+  'done',
+  'pending_confirm',
+  'pending_clarify',
+  'error',
+]);
 
 /** Unknown events are forward-compatible; known events remain strictly validated. */
 export function parseTidyStreamEvent(event: string, data: unknown): TidyStreamEvent | null {
