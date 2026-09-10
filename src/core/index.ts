@@ -392,11 +392,14 @@ export const TidyPendingSummarySchema = z.object({
       }),
     )
     .optional(),
-  /** What the run's note scope actually covered, when a clarification answer
-   * narrowed it. `matched` is every note the scope selected; `included` is how
-   * many the 400-note snapshot could carry. The card must say so whenever
-   * `matched > included` — telling a user a partial snapshot covered their
-   * whole library is the dishonesty this field exists to prevent. */
+  /** What the run's note scope actually covered. Every prompted run resolves a
+   * scope before the snapshot cap — an empty one meaning the whole live
+   * non-Trash library — so this is present on all of them, not only the ones a
+   * clarification answer narrowed. `matched` is every note the scope selected;
+   * `included` is how many the 400-note snapshot could carry. The card must say
+   * so whenever `matched > included` — telling a user a partial snapshot covered
+   * their whole library is the dishonesty this field exists to prevent. It stays
+   * optional in the schema because a pause stored by an older build has none. */
   scope: z
     .object({
       matched: z.number().int().nonnegative(),
@@ -423,6 +426,7 @@ export type TidyPendingSummary = z.infer<typeof TidyPendingSummarySchema>;
 export const TidyClarifyScopeSchema = z.object({
   folder_ids: z.array(uuid).optional(),
   tag_ids: z.array(uuid).optional(),
+  folder_tag_match: z.enum(['all', 'any']).optional(),
   titles: z.enum(['untitled', 'all']).optional(),
   notes: z.enum(['unfiled', 'all']).optional(),
 });
