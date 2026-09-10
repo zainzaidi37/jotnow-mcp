@@ -429,6 +429,11 @@ export const TidyClarifyScopeSchema = z.object({
   folder_tag_match: z.enum(['all', 'any']).optional(),
   titles: z.enum(['untitled', 'all']).optional(),
   notes: z.enum(['unfiled', 'all']).optional(),
+  /** "my 2 latest notes": the N most recently updated notes matching every
+   * other dimension. Recency is `updated_at`, the order the note list and
+   * `tidy_snapshot` are already in. It narrows what *matched*, not just what
+   * the 400-note cap could carry, so the card's count stays truthful. */
+  recent: z.number().int().positive().max(9999).optional(),
 });
 export type TidyClarifyScope = z.infer<typeof TidyClarifyScopeSchema>;
 
