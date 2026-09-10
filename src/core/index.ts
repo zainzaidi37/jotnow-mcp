@@ -853,6 +853,17 @@ export type BillingLinks = z.infer<typeof BillingLinksSchema>;
 // clients treat any other 200 as an ambiguous, possibly partial deletion).
 export const DeletedAccountResponseSchema = z.object({ deleted: z.literal(true) }).strict();
 
+// The `jotnow_schema_compatibility()` RPC's response: one integer naming the
+// sync-protocol epoch the connected database's schema speaks (migration
+// 20260910033812). WP3 of `plans/byo-supabase-implementation.md`.
+//
+// Strict on purpose. A database whose answer the client cannot recognize is
+// not a database it should sync against: a float, a string, a negative number
+// and a null must all land in the same unsupported bucket, and the client must
+// never coerce its way to a number it can compare.
+export const SchemaCompatibilityEpochSchema = z.number().int().positive();
+export type SchemaCompatibilityEpoch = z.infer<typeof SchemaCompatibilityEpochSchema>;
+
 // Note version history. Every content edit snapshots the note's *previous*
 // title/body here (Postgres trigger). Rows are user content — soft-deletable
 // and purged on account deletion — but immutable in practice: clients get
