@@ -900,7 +900,16 @@ export function parseRecallStreamEvent(event: string, data: unknown): RecallStre
 // The billing-links Edge Function's response shape. Checkouts are only
 // minted for users who can use them (null for pro); portal URLs are
 // pre-signed and short-lived — fetched on click, never cached.
+//
+// `plan` was always in the function's body and was dropped here until the
+// standalone `/upgrade` route needed it (`plans/checkout-flow.md` WP2). It is
+// the difference between "no checkout was minted" and "no checkout was minted
+// *because you already subscribed*", and inferring that from two nulls is
+// wrong in exactly the case that matters: a pro row whose `billing_ref` is
+// missing answers null to both, and reading that as an error tells a paying
+// user their checkout is broken.
 export const BillingLinksSchema = z.object({
+  plan: z.enum(PLANS),
   checkoutUrl: z.string().url().nullable(),
   portalUrl: z.string().url().nullable(),
 });
