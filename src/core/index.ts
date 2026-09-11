@@ -443,15 +443,63 @@ export const TidyClarifyQuestionSchema = z.object({
   options: z
     .array(z.object({ id: z.string().min(1), label: z.string(), scope: TidyClarifyScopeSchema }))
     .min(2)
-    .max(4),
+    .max(4)
+    // Option ids are the card's selection keys, React keys and radio `value`s
+    // all at once, so two options sharing one id would silently answer as a
+    // single option. The server's generator already threads unique ids; this is
+    // defence against a malformed or drifted response, not a live bug.
+    .refine(
+      (options) => new Set(options.map((option) => option.id)).size === options.length,
+      'option ids must be unique within a question',
+    ),
 });
 export type TidyClarifyQuestion = z.infer<typeof TidyClarifyQuestionSchema>;
 
 /** At most one round, at most three questions. Both caps are contract, not
  * taste: `plans/tidy-titles-and-clarification.md` §Product contract. */
+export const MAX_TIDY_CLARIFY_QUESTIONS = 3;
+
+/**
+ * The one questions-array shape, shared by every boundary that parses a
+ * clarification round: this schema, the `pending_clarify` stream event, and the
+ * client's recovery read of a stored pause. They used to state three different
+ * rules (min 1 / max 3 here, no bounds at all on the wire, min 1 and no maximum
+ * on recovery), which is drift waiting to happen — one exported schema means
+ * they cannot disagree again.
+ *
+ * Question ids name the radio groups and index the selection map in
+ * `TidyClarifyCard.tsx`; duplicates would make two questions share one answer.
+ *
+ * Note this closes a field, where the neighbouring `error.code` is deliberately
+ * left open. The difference is what the field *is*: `code` is an extensible
+ * vocabulary, and a newer server must be able to send a name this bundle has
+ * never heard of. The 1-3 question cap is not a vocabulary — it is a stated
+ * product contract (`plans/tidy-titles-and-clarification.md` §Product contract)
+ * that the server enforces on the way out. A fourth question arriving would
+ * mean the contract changed, and that change belongs in a deploy that updates
+ * both sides, not in a client quietly rendering more questions than the product
+ * promises.
+ *
+ * The two boundaries fail differently, and the difference is deliberate. On the
+ * live stream this throws inside `parseTidyStreamEvent`, so an old bundle meets
+ * a raised cap as "malformed stream data" — bounded, because `maybeClarify`
+ * runs before `consume_recall_quota_pro`, so nothing has been charged. Reading
+ * the same pause back later is the graceful path: `loadPendingTidyRun` turns a
+ * shape it cannot parse into a discardable pause rather than an error, which is
+ * what keeps the run from blocking every later one for the rest of its TTL.
+ */
+export const TidyClarifyQuestionsSchema = z
+  .array(TidyClarifyQuestionSchema)
+  .min(1)
+  .max(MAX_TIDY_CLARIFY_QUESTIONS)
+  .refine(
+    (questions) => new Set(questions.map((question) => question.id)).size === questions.length,
+    'question ids must be unique',
+  );
+
 export const TidyClarificationSchema = z.object({
   instruction: z.string(),
-  questions: z.array(TidyClarifyQuestionSchema).min(1).max(3),
+  questions: TidyClarifyQuestionsSchema,
 });
 export type TidyClarification = z.infer<typeof TidyClarificationSchema>;
 
@@ -669,7 +717,9 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
    */
   z.object({
     event: z.literal('pending_clarify'),
-    data: z.object({ runId: uuid, questions: z.array(TidyClarifyQuestionSchema) }),
+    // The shared shape, not a bare array: the wire is the same contract the
+    // stored pause and the planner's own output answer to.
+    data: z.object({ runId: uuid, questions: TidyClarifyQuestionsSchema }),
   }),
   z.object({
     event: z.literal('error'),
