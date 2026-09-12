@@ -794,11 +794,19 @@ export type RecallPeriodUsage = z.infer<typeof RecallPeriodUsageSchema>;
  * function. `month` is the UTC calendar month the response was built in; it is
  * unrelated to the caller's quota window (which comes from
  * {@link RecallPeriodUsageSchema}) and is retained only for older clients.
+ *
+ * A `null` limit means **uncapped** (WP-H of
+ * `plans/byo-selfhost-distribution.md`). A self-hosted deployment's operator
+ * pays their own provider bills, so `RECALL_MONTHLY_LIMIT=unlimited` switches
+ * the ceiling off — and the wire form has to be a shape the Usage view can
+ * render as "no limit" rather than as the int4 the quota RPC receives. Hosted
+ * never sends it: `_shared/limits.ts` reaches uncapped only through that one
+ * word, which no numeric misconfiguration can spell.
  */
 export const UsageLimitsSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
-  recall_monthly_limit: z.number().int().positive(),
-  history_search_monthly_limit: z.number().int().positive(),
+  recall_monthly_limit: z.number().int().positive().nullable(),
+  history_search_monthly_limit: z.number().int().positive().nullable(),
 });
 export type UsageLimits = z.infer<typeof UsageLimitsSchema>;
 
