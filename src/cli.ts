@@ -34,9 +34,9 @@ Usage:
   jotnow get <id>
   jotnow recent [n]
   jotnow                         run the MCP server on stdio (for MCP configs)
-  jotnow init --key jn_live_...
+  jotnow init --key jn_live_... [--api-url <url>]
                                  validate a key and print the MCP config block
-  jotnow key
+  jotnow key [--api-url <url>]
                                  store your API key for this machine (input hidden)
   jotnow use local|account       choose where jots are written on this machine
   jotnow where                   show which library jots go to, and why
@@ -74,6 +74,22 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, 
     }
   }
   return { positional, flags };
+}
+
+/**
+ * Quote an environment value for the copy-pasteable POSIX shell commands
+ * below. Keep identical to ApiKeysSection.tsx's commandArgument.
+ */
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'"'"'`)}'`;
+}
+
+function selectedApiUrl(flags: ReadonlyMap<string, string>, env: NodeJS.ProcessEnv): string {
+  const apiUrlFlag = flags.get('api-url');
+  const apiUrl =
+    apiUrlFlag === undefined ? env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL : apiUrlFlag.trim();
+  if (apiUrl === '') throw new Error('--api-url needs a non-empty URL');
+  return apiUrl;
 }
 
 async function readStdin(): Promise<string> {
@@ -136,7 +152,7 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
         : 'that key does not look like a Jotnow key (expected jn_live_ + 43 characters)',
     );
   }
-  const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;
+  const apiUrl = selectedApiUrl(flags, env);
   const api = new NotesApi({ apiUrl, apiKey: key });
 
   process.stdout.write('Checking the key against the API… ');
@@ -153,12 +169,19 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
 
   console.log('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n');
   console.log(JSON.stringify(mcpConfig, null, 2));
+  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+  const codexApiUrl =
+    apiUrl === DEFAULT_API_URL ? '' : ` --env JOTNOW_API_URL=${shellQuote(apiUrl)}`;
   console.log('\nOr with the Claude Code CLI:\n');
-  console.log(`claude mcp add jotnow -e JOTNOW_API_KEY=${key} -- npx -y jotnow`);
+  console.log(`claude mcp add jotnow -e JOTNOW_API_KEY=${key}${claudeApiUrl} -- npx -y jotnow`);
   console.log('\nOr with the Codex CLI:\n');
-  console.log(`codex mcp add jotnow --env JOTNOW_API_KEY=${key} -- npx -y jotnow`);
+  console.log(`codex mcp add jotnow --env JOTNOW_API_KEY=${key}${codexApiUrl} -- npx -y jotnow`);
   console.log('\nThen tell your agent to "jot that down" — done.');
-  console.log('\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.');
+  console.log(
+    apiUrl === DEFAULT_API_URL
+      ? '\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.'
+      : '\nTip: `jotnow key` stores only the key. Keep JOTNOW_API_URL in the MCP config or generated command for this custom endpoint.',
+  );
 }
 
 /**
@@ -242,6 +265,7 @@ function runWhere(env: NodeJS.ProcessEnv): void {
 
 export interface RunKeyDeps {
   env?: NodeJS.ProcessEnv;
+  flags?: ReadonlyMap<string, string>;
   // Bypasses the real prompt entirely — used by orchestration tests that
   // don't want to drive stream mechanics (those live in prompt.test.ts).
   readHidden?: () => Promise<string>;
@@ -274,7 +298,7 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
     throw new Error('that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
   }
 
-  const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;
+  const apiUrl = selectedApiUrl(deps.flags ?? new Map(), env);
   const api = new NotesApi({ apiUrl, apiKey: key });
 
   stdout.write('Checking the key against the API… ');
@@ -289,15 +313,23 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
     );
   }
 
-  stdout.write('Saved — jotnow will use this key automatically from now on, no env var needed.\n\n');
-  stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
   stdout.write(
-    `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'] } } }, null, 2)}\n`,
+    apiUrl === DEFAULT_API_URL
+      ? 'Saved — jotnow will use this key automatically from now on, no env var needed.\n\n'
+      : 'Saved the key. The custom endpoint is not stored; keep JOTNOW_API_URL in the MCP config or command below.\n\n',
   );
+  stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
+  const envBlock = apiUrl === DEFAULT_API_URL ? undefined : { JOTNOW_API_URL: apiUrl };
+  stdout.write(
+    `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'], ...(envBlock ? { env: envBlock } : {}) } } }, null, 2)}\n`,
+  );
+  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+  const codexApiUrl =
+    apiUrl === DEFAULT_API_URL ? '' : ` --env JOTNOW_API_URL=${shellQuote(apiUrl)}`;
   stdout.write('\nOr with the Claude Code CLI:\n\n');
-  stdout.write('claude mcp add jotnow -- npx -y jotnow\n');
+  stdout.write(`claude mcp add jotnow${claudeApiUrl} -- npx -y jotnow\n`);
   stdout.write('\nOr with the Codex CLI:\n\n');
-  stdout.write('codex mcp add jotnow -- npx -y jotnow\n');
+  stdout.write(`codex mcp add jotnow${codexApiUrl} -- npx -y jotnow\n`);
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -321,7 +353,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         await runInit(flags, process.env);
         return;
       case 'key':
-        await runKey();
+        await runKey({ flags });
         return;
       case 'use':
         runUse(positional, process.env);

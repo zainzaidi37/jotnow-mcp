@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { DEFAULT_API_URL } from './config.js';
 import { configFilePath } from './configFile.js';
 
 const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
@@ -20,13 +21,16 @@ describe('runKey', () => {
   let dir: string;
   let prevConfigDir: string | undefined;
   let prevApiKey: string | undefined;
+  let prevApiUrl: string | undefined;
 
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'jotnow-key-'));
     prevConfigDir = process.env.JOTNOW_CONFIG_DIR;
     prevApiKey = process.env.JOTNOW_API_KEY;
+    prevApiUrl = process.env.JOTNOW_API_URL;
     process.env.JOTNOW_CONFIG_DIR = dir;
     delete process.env.JOTNOW_API_KEY;
+    delete process.env.JOTNOW_API_URL;
   });
 
   afterEach(() => {
@@ -34,6 +38,8 @@ describe('runKey', () => {
     else process.env.JOTNOW_CONFIG_DIR = prevConfigDir;
     if (prevApiKey === undefined) delete process.env.JOTNOW_API_KEY;
     else process.env.JOTNOW_API_KEY = prevApiKey;
+    if (prevApiUrl === undefined) delete process.env.JOTNOW_API_URL;
+    else process.env.JOTNOW_API_URL = prevApiUrl;
     rmSync(dir, { recursive: true, force: true });
     vi.unstubAllGlobals();
   });
@@ -47,7 +53,7 @@ describe('runKey', () => {
 
     await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env: process.env });
 
-    expect(fetchMock).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
     expect(existsSync(configFilePath(dir))).toBe(true);
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiKey).toBe(GOOD_KEY);
     expect(stdout.all()).toMatch(/ok ✔/);
@@ -102,6 +108,76 @@ describe('runKey', () => {
     expect(combined).not.toMatch(/jn_live_/);
   });
 
+  it('carries a custom endpoint into JSON and both client commands with shell-safe quoting', async () => {
+    const apiUrl =
+      "https://self-hosted.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { runKey } = await import('./cli.js');
+    const stdout = capture();
+    const stderr = capture();
+    const env = { ...process.env, JOTNOW_API_URL: apiUrl };
+
+    await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env });
+
+    expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
+    expect(stdout.all()).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
+    expect(stdout.all()).toContain(
+      `claude mcp add jotnow -e JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+    );
+    expect(stdout.all()).toContain(
+      `codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+    );
+    expect(stdout.all()).toMatch(/custom endpoint is not stored/i);
+  });
+
+  it('--api-url overrides the environment for validation and every printed setup form', async () => {
+    const apiUrl = "https://chosen.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { runKey } = await import('./cli.js');
+    const stdout = capture();
+    const stderr = capture();
+    const env = {
+      ...process.env,
+      JOTNOW_API_URL: 'https://ignored.example/functions/v1/mcp-api',
+    };
+
+    await runKey({
+      readHidden: async () => GOOD_KEY,
+      stdout,
+      stderr,
+      env,
+      flags: new Map([['api-url', apiUrl]]),
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
+    expect(stdout.all()).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
+    expect(stdout.all()).toContain(`claude mcp add jotnow -e JOTNOW_API_URL=${quotedUrl}`);
+    expect(stdout.all()).toContain(`codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl}`);
+    expect(stdout.all()).not.toContain('ignored.example');
+    expect(stdout.all()).toMatch(/custom endpoint is not stored/i);
+  });
+
+  it('rejects an empty --api-url before validation or storage', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { runKey } = await import('./cli.js');
+
+    await expect(
+      runKey({
+        readHidden: async () => GOOD_KEY,
+        env: process.env,
+        flags: new Map([['api-url', '   ']]),
+      }),
+    ).rejects.toThrow('--api-url needs a non-empty URL');
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(existsSync(configFilePath(dir))).toBe(false);
+  });
+
   it('warns on stderr when JOTNOW_API_KEY is already set, but still saves', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -142,6 +218,7 @@ describe('copy', () => {
     const { HELP } = await import('./cli.js');
     expect(HELP).toContain('jotnow key');
     expect(HELP).toContain('npm i -g jotnow');
+    expect(HELP).toContain('--api-url');
   });
 
   it('runInit output includes the `jotnow key` tip and Codex command', async () => {
@@ -158,6 +235,70 @@ describe('copy', () => {
     }
     const output = logs.join('\n');
     expect(output).toMatch(/jotnow key/);
-    expect(output).toContain(`codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`);
+    expect(output).toContain(
+      `claude mcp add jotnow -e JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`,
+    );
+    expect(output).toContain(
+      `codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`,
+    );
+  });
+
+  it('runInit carries a custom endpoint into both client commands with shell-safe quoting', async () => {
+    const apiUrl =
+      "https://self-hosted.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args) => void logs.push(args.join(' ')));
+    const previousApiUrl = process.env.JOTNOW_API_URL;
+    process.env.JOTNOW_API_URL = apiUrl;
+    const { main } = await import('./cli.js');
+    try {
+      await main(['init', '--key', GOOD_KEY]);
+    } finally {
+      if (previousApiUrl === undefined) delete process.env.JOTNOW_API_URL;
+      else process.env.JOTNOW_API_URL = previousApiUrl;
+      logSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+
+    const output = logs.join('\n');
+    const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
+    expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
+    expect(output).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    expect(output).toContain(
+      `claude mcp add jotnow -e JOTNOW_API_KEY=${GOOD_KEY} -e JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+    );
+    expect(output).toContain(
+      `codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} --env JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+    );
+  });
+
+  it('runInit --api-url overrides JOTNOW_API_URL and carries the selected endpoint through setup', async () => {
+    const flagUrl = 'https://chosen.example/functions/v1/mcp-api';
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args) => void logs.push(args.join(' ')));
+    const previousApiUrl = process.env.JOTNOW_API_URL;
+    process.env.JOTNOW_API_URL = 'https://ignored.example/functions/v1/mcp-api';
+    const { main } = await import('./cli.js');
+    try {
+      await main(['init', '--api-url', flagUrl, '--key', GOOD_KEY]);
+    } finally {
+      if (previousApiUrl === undefined) delete process.env.JOTNOW_API_URL;
+      else process.env.JOTNOW_API_URL = previousApiUrl;
+      logSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+
+    const output = logs.join('\n');
+    expect(fetchMock).toHaveBeenCalledWith(flagUrl, expect.any(Object));
+    expect(output).toContain(`"JOTNOW_API_URL": "${flagUrl}"`);
+    expect(output).not.toContain('ignored.example');
   });
 });

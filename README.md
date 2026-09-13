@@ -34,6 +34,18 @@ npx jotnow init --key jn_live_your_key
 
 This validates the key and prints an MCP config block with the key embedded in its `env`, plus equivalent commands for Claude Code and Codex.
 
+For a self-hosted API, pass its endpoint directly. The explicit flag takes
+priority over `JOTNOW_API_URL`, and the generated JSON and client commands keep
+the selected endpoint:
+
+```bash
+npx jotnow init --api-url https://your-project.supabase.co/functions/v1/mcp-api --key jn_live_your_key
+```
+
+`jotnow key` stores only the key. When `JOTNOW_API_URL` points at a custom
+endpoint, its generated JSON and client commands include that endpoint, but the
+endpoint itself is not added to `~/.jotnow/config.json`.
+
 ## MCP configuration
 
 
