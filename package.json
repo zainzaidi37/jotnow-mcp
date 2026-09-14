@@ -1,6 +1,6 @@
 {
   "name": "jotnow",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "mcpName": "io.github.zainzaidi37/jotnow",
   "packageManager": "pnpm@9.15.9",
   "description": "Jot notes from Claude Code / Codex to jotnow — MCP server and CLI",
