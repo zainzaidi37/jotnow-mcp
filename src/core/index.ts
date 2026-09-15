@@ -503,7 +503,6 @@ export const TidyClarificationSchema = z.object({
 });
 export type TidyClarification = z.infer<typeof TidyClarificationSchema>;
 
-
 /**
  * Which shape of pause a `pending_confirm` run is holding, and therefore which
  * card the user is owed. A manual pause stops after the taxonomy call and its
@@ -518,11 +517,7 @@ export type TidyClarification = z.infer<typeof TidyClarificationSchema>;
  * a non-atomic deploy, to say something the client cannot get wrong. Recovery
  * from a run row reads it off the stored `pending_plan`, which is authoritative.
  */
-export const TIDY_PENDING_KINDS = [
-  'manual_taxonomy',
-  'prompted_full',
-  'prompted_clarify',
-] as const;
+export const TIDY_PENDING_KINDS = ['manual_taxonomy', 'prompted_full', 'prompted_clarify'] as const;
 export type TidyPendingKind = (typeof TIDY_PENDING_KINDS)[number];
 
 /**
@@ -809,6 +804,34 @@ export const UsageLimitsSchema = z.object({
   history_search_monthly_limit: z.number().int().positive().nullable(),
 });
 export type UsageLimits = z.infer<typeof UsageLimitsSchema>;
+
+export const AiSecretNameSchema = z.enum(['OPENAI_API_KEY', 'VOYAGE_API_KEY']);
+export type AiSecretName = z.infer<typeof AiSecretNameSchema>;
+
+/** Presence-only status from the authenticated deployment runtime. */
+export const AiConfigurationSchema = z
+  .object({
+    state: z.enum(['missing', 'partial', 'configured']),
+    openai: z.boolean(),
+    voyage: z.boolean(),
+    missing: z.array(AiSecretNameSchema),
+  })
+  .superRefine((value, ctx) => {
+    const expected = [
+      ...(value.openai ? [] : (['OPENAI_API_KEY'] as const)),
+      ...(value.voyage ? [] : (['VOYAGE_API_KEY'] as const)),
+    ];
+    const expectedState =
+      expected.length === 0 ? 'configured' : expected.length === 2 ? 'missing' : 'partial';
+    if (
+      value.state !== expectedState ||
+      value.missing.length !== expected.length ||
+      value.missing.some((name, index) => name !== expected[index])
+    ) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'inconsistent AI configuration' });
+    }
+  });
+export type AiConfiguration = z.infer<typeof AiConfigurationSchema>;
 
 // The recall Edge Function's response shape, shared with the web UI.
 export const RecallSourceSchema = z.object({
