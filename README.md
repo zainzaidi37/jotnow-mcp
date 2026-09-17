@@ -34,17 +34,33 @@ npx jotnow init --key jn_live_your_key
 
 This validates the key and prints an MCP config block with the key embedded in its `env`, plus equivalent commands for Claude Code and Codex.
 
-For a self-hosted API, pass its endpoint directly. The explicit flag takes
-priority over `JOTNOW_API_URL`, and the generated JSON and client commands keep
-the selected endpoint:
+For a self-hosted API, use guided setup (requires jotnow 0.4.3 or newer):
+
+```bash
+npx jotnow init-selfhost
+```
+
+Paste your Supabase project ref or URL, then paste your API key at the hidden
+prompt. A ref or origin is expanded to `/functions/v1/mcp-api`; a URL with a
+path is used as supplied. Empty or invalid project input stops setup before
+the key is sent. After validation, the command saves the endpoint and key
+together and prints the JSON configuration and Claude Code/Codex commands.
+
+For scripts or a custom API path, pass the endpoint directly. The explicit
+flag takes priority over `JOTNOW_API_URL`, and generated client configurations
+keep the selected endpoint:
 
 ```bash
 npx jotnow init --api-url https://your-project.supabase.co/functions/v1/mcp-api --key jn_live_your_key
 ```
 
-`jotnow key` stores only the key. When `JOTNOW_API_URL` points at a custom
-endpoint, its generated JSON and client commands include that endpoint, but the
-endpoint itself is not added to `~/.jotnow/config.json`.
+`init --key` validates and prints configuration without saving credentials.
+`init-selfhost` and `jotnow key --api-url <url>` save the validated endpoint
+beside the key, so later terminal commands need no endpoint environment
+variable. Custom credentials use config version 2: older CLIs refuse this file
+instead of ignoring its endpoint and sending the key to the hosted API.
+Hosted key files remain version 1. Update an older global installation with
+`npm install --global jotnow@latest` before using a saved self-hosted account.
 
 ## MCP configuration
 
@@ -147,7 +163,7 @@ choose (or set `JOTNOW_MODE` per command).
 ## Environment variables
 
 - `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk.
-- `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting
+- `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting. With a stored key, the saved endpoint is used when this override is absent. An explicit `JOTNOW_API_KEY` uses this override or the hosted default; it never inherits an unrelated stored endpoint.
 - `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app reads the same variable from *its own* environment, and an app launched from the Start menu or a shortcut does not inherit a variable you export in a shell — so setting it here usually points the CLI at a directory with no local-library pointer in it, and local mode won't be detected.
 - `JOTNOW_MODE`: `local` or `account` for a single command; overrides the choice stored by `jotnow use`
 

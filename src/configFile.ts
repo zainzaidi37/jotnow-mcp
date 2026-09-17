@@ -6,7 +6,8 @@ import { randomBytes } from 'node:crypto';
 // Stores the API key once per machine so terminal use and MCP configs don't
 // need JOTNOW_API_KEY in every env block (see resolveConfig in config.ts).
 
-const CONFIG_VERSION = 1;
+const LEGACY_CONFIG_VERSION = 1;
+const ENDPOINT_CONFIG_VERSION = 2;
 
 /** The two things `jotnow` can be pointed at (plans/desktop-app.md §5.4). */
 export type JotnowMode = 'local' | 'account';
@@ -14,13 +15,12 @@ export type JotnowMode = 'local' | 'account';
 export const JOTNOW_MODES: readonly JotnowMode[] = ['local', 'account'];
 
 /**
- * `mode` is **optional and `version` stays 1**, deliberately (§5.4).
+ * `mode` is optional. Hosted key and mode-only files stay at version 1;
+ * endpoint/key pairs use version 2 so older readers fail closed.
  *
- * The loader below throws on any `version !== CONFIG_VERSION`, so a v2 file
- * written by a new CLI would make every *older installed* CLI fail on every
- * invocation — and users install this with `npx`, so versions drift freely. An
- * unknown key, by contrast, is simply ignored by an old reader. Only bump the
- * version for a change an old reader genuinely cannot survive.
+ * Older installed CLIs ignore unknown fields, so writing a custom endpoint in
+ * v1 would make them send its key to hosted. They reject v2 before using the
+ * key, which is the intentional compatibility boundary.
  *
  * `apiKey` is optional for the same family of reasons in the other direction:
  * `jotnow use local` must be recordable on a machine that has no key at all.
@@ -32,8 +32,9 @@ export const JOTNOW_MODES: readonly JotnowMode[] = ['local', 'account'];
  * `JOTNOW_MODE` as the only way to run local mode.
  */
 interface StoredConfig {
-  version: 1;
+  version: 1 | 2;
   apiKey?: string;
+  apiUrl?: string;
   mode?: JotnowMode;
 }
 
@@ -56,7 +57,11 @@ export function configFilePath(dir: string): string {
  * independent settings: `jotnow key` must not erase a stored mode, and
  * `jotnow use` must not erase the key.
  */
-function writeStoredConfig(dir: string, patch: Partial<Omit<StoredConfig, 'version'>>): void {
+function writeStoredConfig(
+  dir: string,
+  patch: Partial<Omit<StoredConfig, 'version'>>,
+  version?: StoredConfig['version'],
+): void {
   // A corrupt existing file is recreated, not rethrown: `loadStoredKey`'s
   // error text says "Run `jotnow key` to recreate it", and before `mode`
   // existed the save was an unconditional overwrite — so the write commands
@@ -64,14 +69,26 @@ function writeStoredConfig(dir: string, patch: Partial<Omit<StoredConfig, 'versi
   // they exist to repair. What a garbage file loses is only what it already
   // lost: nothing in it was readable.
   let existing: Partial<Omit<StoredConfig, 'version'>> = {};
+  let existingIsValid = false;
   if (existsSync(configFilePath(dir))) {
     try {
       existing = loadStoredConfig(dir);
+      existingIsValid = true;
     } catch {
       existing = {};
     }
   }
-  const next: StoredConfig = { version: CONFIG_VERSION, ...existing, ...patch };
+  const existingVersion = existingIsValid
+    ? (() => {
+        try {
+          const parsed = JSON.parse(readFileSync(configFilePath(dir), 'utf8')) as { version?: unknown };
+          return parsed.version === ENDPOINT_CONFIG_VERSION ? ENDPOINT_CONFIG_VERSION : LEGACY_CONFIG_VERSION;
+        } catch {
+          return LEGACY_CONFIG_VERSION;
+        }
+      })()
+    : LEGACY_CONFIG_VERSION;
+  const next: StoredConfig = { version: version ?? existingVersion, ...existing, ...patch };
 
   mkdirSync(dir, { recursive: true });
   // mkdirSync's `mode` option and writeFileSync's creation mode are both
@@ -88,7 +105,16 @@ function writeStoredConfig(dir: string, patch: Partial<Omit<StoredConfig, 'versi
 }
 
 export function saveStoredKey(key: string, dir: string): void {
-  writeStoredConfig(dir, { apiKey: key });
+  // Hosted keys remain readable by older CLIs. Explicitly clear a previous
+  // endpoint so changing back to hosted cannot retain a stale self-host URL.
+  writeStoredConfig(dir, { apiKey: key, apiUrl: undefined }, LEGACY_CONFIG_VERSION);
+}
+
+/** Stores an endpoint and the key that was validated against it as one pair. */
+export function saveStoredAccount(apiKey: string, apiUrl: string, dir: string): void {
+  // v2 is a fail-closed compatibility boundary: older CLIs reject it instead
+  // of ignoring apiUrl and sending this self-host key to the hosted service.
+  writeStoredConfig(dir, { apiKey, apiUrl }, ENDPOINT_CONFIG_VERSION);
 }
 
 /** `jotnow use local|account` — the persisted rung of §5.4's precedence. */
@@ -105,7 +131,7 @@ export function saveStoredMode(mode: JotnowMode, dir: string): void {
 export function loadStoredConfig(
   dir: string,
   stderr: { write: (chunk: string) => unknown } = process.stderr,
-): { apiKey?: string; mode?: JotnowMode } {
+): { apiKey?: string; apiUrl?: string; mode?: JotnowMode } {
   const file = configFilePath(dir);
   if (!existsSync(file)) return {};
 
@@ -120,12 +146,15 @@ export function loadStoredConfig(
   if (
     typeof parsed !== 'object' ||
     parsed === null ||
-    record.version !== CONFIG_VERSION ||
+    (record.version !== LEGACY_CONFIG_VERSION && record.version !== ENDPOINT_CONFIG_VERSION) ||
     // Both fields optional, but a file carrying neither is not a config this
     // package wrote — it is the "unexpected shape" case, and saying so is what
     // keeps a typo'd key field from reading as "no key stored".
     (record.apiKey === undefined && record.mode === undefined) ||
     (record.apiKey !== undefined && typeof record.apiKey !== 'string') ||
+    (record.version === LEGACY_CONFIG_VERSION && record.apiUrl !== undefined) ||
+    (record.version === ENDPOINT_CONFIG_VERSION &&
+      (typeof record.apiUrl !== 'string' || record.apiUrl === '' || record.apiKey === undefined)) ||
     (record.mode !== undefined && !JOTNOW_MODES.includes(record.mode))
   ) {
     throw new Error(`${file} has an unexpected shape. Run \`jotnow key\` to recreate it.`);
@@ -144,7 +173,7 @@ export function loadStoredConfig(
     }
   }
 
-  return { apiKey: record.apiKey, mode: record.mode };
+  return { apiKey: record.apiKey, apiUrl: record.apiUrl, mode: record.mode };
 }
 
 /** Loads the stored key, if any. Missing file, or a file with no key → undefined. */

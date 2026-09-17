@@ -10,7 +10,11 @@ export class HiddenLineAbortedError extends Error {
 }
 
 export interface ReadHiddenLineOptions {
-  input: NodeJS.EventEmitter & { setRawMode?: (mode: boolean) => void };
+  input: NodeJS.EventEmitter & {
+    setRawMode?: (mode: boolean) => void;
+    pause?: () => unknown;
+    resume?: () => unknown;
+  };
   output: { write: (chunk: string) => unknown };
   isTTY: boolean;
   prompt: string;
@@ -36,6 +40,7 @@ export function readHiddenLine({ input, output, isTTY, prompt }: ReadHiddenLineO
       input.removeListener?.('end', onEnd);
       input.removeListener?.('error', onError);
       if (isTTY) input.setRawMode?.(false);
+      input.pause?.();
     }
 
     function finish(value: string): void {
@@ -98,6 +103,7 @@ export function readHiddenLine({ input, output, isTTY, prompt }: ReadHiddenLineO
     }
 
     if (isTTY) input.setRawMode?.(true);
+    input.resume?.();
     input.on('data', onData);
     input.on('end', onEnd);
     input.on('error', onError);

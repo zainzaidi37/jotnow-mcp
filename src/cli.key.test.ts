@@ -56,6 +56,7 @@ describe('runKey', () => {
     expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
     expect(existsSync(configFilePath(dir))).toBe(true);
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiKey).toBe(GOOD_KEY);
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
     expect(stdout.all()).toMatch(/ok ✔/);
     expect(stdout.all()).toContain('mcpServers');
     expect(stdout.all()).toContain('claude mcp add jotnow -- npx -y jotnow');
@@ -129,7 +130,8 @@ describe('runKey', () => {
     expect(stdout.all()).toContain(
       `codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
     );
-    expect(stdout.all()).toMatch(/custom endpoint is not stored/i);
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBe(apiUrl);
+    expect(stdout.all()).toMatch(/custom endpoint automatically/i);
   });
 
   it('--api-url overrides the environment for validation and every printed setup form', async () => {
@@ -158,7 +160,8 @@ describe('runKey', () => {
     expect(stdout.all()).toContain(`claude mcp add jotnow -e JOTNOW_API_URL=${quotedUrl}`);
     expect(stdout.all()).toContain(`codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl}`);
     expect(stdout.all()).not.toContain('ignored.example');
-    expect(stdout.all()).toMatch(/custom endpoint is not stored/i);
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBe(apiUrl);
+    expect(stdout.all()).toMatch(/custom endpoint automatically/i);
   });
 
   it('rejects an empty --api-url before validation or storage', async () => {

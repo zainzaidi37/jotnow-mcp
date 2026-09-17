@@ -2,7 +2,15 @@ import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { configDir, configFilePath, loadStoredKey, saveStoredKey } from './configFile.js';
+import {
+  configDir,
+  configFilePath,
+  loadStoredConfig,
+  loadStoredKey,
+  saveStoredAccount,
+  saveStoredKey,
+  saveStoredMode,
+} from './configFile.js';
 
 const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
@@ -44,6 +52,43 @@ describe('configFile', () => {
     expect(loadStoredKey(dir)).toBeUndefined();
   });
 
+  it('stores an endpoint with the key it was validated against', () => {
+    const apiUrl = 'https://project.supabase.co/functions/v1/mcp-api';
+    saveStoredAccount(GOOD_KEY, apiUrl, dir);
+    expect(loadStoredConfig(dir)).toEqual({ apiKey: GOOD_KEY, apiUrl, mode: undefined });
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).version).toBe(2);
+  });
+
+  it('makes an older v1-only reader reject a custom endpoint pair before returning its key', () => {
+    saveStoredAccount(GOOD_KEY, 'https://project.example/functions/v1/mcp-api', dir);
+    const oldReader = () => {
+      const record = JSON.parse(readFileSync(configFilePath(dir), 'utf8')) as {
+        version?: unknown;
+        apiKey?: unknown;
+      };
+      if (record.version !== 1) throw new Error('unexpected shape');
+      return record.apiKey;
+    };
+    expect(oldReader).toThrow('unexpected shape');
+  });
+
+  it('switching from a self-host pair to a hosted key removes the endpoint and returns to v1', () => {
+    saveStoredAccount(GOOD_KEY, 'https://project.example/functions/v1/mcp-api', dir);
+    saveStoredKey(GOOD_KEY, dir);
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8'))).toEqual({
+      version: 1,
+      apiKey: GOOD_KEY,
+    });
+  });
+
+  it('rejects an endpoint in v1 and an unpaired endpoint config in v2', () => {
+    const file = configFilePath(dir);
+    writeFileSync(file, JSON.stringify({ version: 1, apiKey: GOOD_KEY, apiUrl: 'https://wrong.test' }));
+    expect(() => loadStoredConfig(dir)).toThrow(/unexpected shape/);
+    writeFileSync(file, JSON.stringify({ version: 2, apiUrl: 'https://wrong.test' }));
+    expect(() => loadStoredConfig(dir)).toThrow(/unexpected shape/);
+  });
+
   it('throws naming the file path when the JSON is corrupt', () => {
     const file = configFilePath(dir);
     writeFileSync(file, '{ not valid json');
@@ -65,6 +110,14 @@ describe('configFile', () => {
     saveStoredKey(GOOD_KEY, dir);
     expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, apiKey: GOOD_KEY });
     expect(loadStoredKey(dir)).toBe(GOOD_KEY);
+  });
+
+  it('repairs an invalid v2 file to a valid v1 mode-only file', () => {
+    const file = configFilePath(dir);
+    writeFileSync(file, JSON.stringify({ version: 2, apiUrl: 'https://broken.example' }));
+    saveStoredMode('local', dir);
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toEqual({ version: 1, mode: 'local' });
+    expect(loadStoredConfig(dir)).toEqual({ apiKey: undefined, apiUrl: undefined, mode: 'local' });
   });
 
   posixOnly('tightens loose file perms to 0600, warns on stderr, and still returns the key', () => {

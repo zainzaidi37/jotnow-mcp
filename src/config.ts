@@ -4,7 +4,7 @@
 // secret; it is a user-scoped key from the web app's settings page — the
 // Supabase service-role key must never appear anywhere in this package.
 
-import { configDir, configFilePath, loadStoredKey } from './configFile.js';
+import { configDir, configFilePath, loadStoredConfig } from './configFile.js';
 
 export const DEFAULT_API_URL =
   'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api';
@@ -16,19 +16,20 @@ export interface Config {
   apiKey: string;
 }
 
-// Reads the real stored-key file. Kept as the default `loadStored` arg (a
-// bare zero-arg function) rather than threading `env` through, so a plain
-// `resolveConfig()` call — what both the CLI and the bare MCP-server launch
-// use — reads the same real config file a human's `jotnow key` just wrote.
-function defaultLoadStoredKey(): string | undefined {
-  return loadStoredKey(configDir());
+interface StoredAccountConfig {
+  apiKey?: string;
+  apiUrl?: string;
+}
+
+function defaultLoadStored(): StoredAccountConfig {
+  return loadStoredConfig(configDir());
 }
 
 export function resolveConfig(
   env: Record<string, string | undefined> = process.env,
-  loadStored: () => string | undefined = defaultLoadStoredKey,
+  loadStored: () => StoredAccountConfig | string | undefined = defaultLoadStored,
 ): Config {
-  const apiUrl = env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL;
+  const explicitApiUrl = env.JOTNOW_API_URL?.trim() || undefined;
   const envKey = env.JOTNOW_API_KEY?.trim() ?? '';
 
   if (envKey !== '') {
@@ -40,17 +41,21 @@ export function resolveConfig(
           'It overrides any stored key, so the stored key (if any) will not be used until this is fixed or unset.',
       );
     }
-    return { apiUrl, apiKey: envKey };
+    return { apiUrl: explicitApiUrl ?? DEFAULT_API_URL, apiKey: envKey };
   }
 
-  const stored = loadStored(); // may throw (corrupt file) — propagate as-is, it already names the file
-  if (stored === undefined) {
+  const loaded = loadStored();
+  const stored = typeof loaded === 'string' ? { apiKey: loaded } : loaded;
+  if (stored?.apiKey === undefined) {
     throw new Error('No API key found. Run `jotnow key` to set one up, or set JOTNOW_API_KEY.');
   }
-  if (!API_KEY_PATTERN.test(stored)) {
+  if (!API_KEY_PATTERN.test(stored.apiKey)) {
     throw new Error(
       `The key stored in ${configFilePath(configDir(env))} does not look like a jotnow key. Run \`jotnow key\` to set a new one.`,
     );
   }
-  return { apiUrl, apiKey: stored };
+  return {
+    apiUrl: explicitApiUrl ?? stored.apiUrl ?? DEFAULT_API_URL,
+    apiKey: stored.apiKey,
+  };
 }

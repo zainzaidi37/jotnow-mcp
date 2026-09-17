@@ -6,7 +6,7 @@ import { createRequire } from 'node:module';
 import { ApiError, NotesApi } from './api.js';
 import { VERSION } from './cli.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
-import { saveStoredKey } from './configFile.js';
+import { saveStoredAccount, saveStoredKey } from './configFile.js';
 import { buildServer } from './server.js';
 import { detectRepoTag, normalizeTags } from './tagging.js';
 
@@ -93,6 +93,35 @@ describe('resolveConfig', () => {
     expect(config.apiKey).toBe(STORED_KEY);
   });
 
+  it('uses the endpoint stored with a stored key', () => {
+    const apiUrl = 'https://project.supabase.co/functions/v1/mcp-api';
+    expect(resolveConfig({}, () => ({ apiKey: GOOD_KEY, apiUrl }))).toEqual({
+      apiKey: GOOD_KEY,
+      apiUrl,
+    });
+  });
+
+  it('does not combine an environment key with an unrelated stored endpoint', () => {
+    const loadStored = vi.fn(() => ({
+      apiKey: `jn_live_${'z'.repeat(43)}`,
+      apiUrl: 'https://stored.example/functions/v1/mcp-api',
+    }));
+    expect(resolveConfig({ JOTNOW_API_KEY: GOOD_KEY }, loadStored)).toEqual({
+      apiKey: GOOD_KEY,
+      apiUrl: DEFAULT_API_URL,
+    });
+    expect(loadStored).not.toHaveBeenCalled();
+  });
+
+  it('lets an explicit endpoint override the endpoint paired with a stored key', () => {
+    expect(
+      resolveConfig({ JOTNOW_API_URL: 'https://explicit.example/mcp-api' }, () => ({
+        apiKey: GOOD_KEY,
+        apiUrl: 'https://stored.example/mcp-api',
+      })),
+    ).toEqual({ apiKey: GOOD_KEY, apiUrl: 'https://explicit.example/mcp-api' });
+  });
+
   it('env unset, malformed stored key: error names the file and suggests `jotnow key`', () => {
     expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/jotnow key/);
     expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/config\.json/);
@@ -147,6 +176,21 @@ describe('resolveConfig', () => {
     } finally {
       if (prevDir === undefined) delete process.env.JOTNOW_CONFIG_DIR;
       else process.env.JOTNOW_CONFIG_DIR = prevDir;
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('wires the real default loader for a stored endpoint and key pair', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jotnow-cfg-'));
+    const previous = process.env.JOTNOW_CONFIG_DIR;
+    try {
+      process.env.JOTNOW_CONFIG_DIR = dir;
+      const apiUrl = 'https://project.supabase.co/functions/v1/mcp-api';
+      saveStoredAccount(GOOD_KEY, apiUrl, dir);
+      expect(resolveConfig({})).toEqual({ apiKey: GOOD_KEY, apiUrl });
+    } finally {
+      if (previous === undefined) delete process.env.JOTNOW_CONFIG_DIR;
+      else process.env.JOTNOW_CONFIG_DIR = previous;
       rmSync(dir, { recursive: true, force: true });
     }
   });
