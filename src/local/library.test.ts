@@ -1,8 +1,11 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { fork, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { openLocalLibrary, MAX_SUPPORTED_SCHEMA_VERSION } from './library.js';
+import { openLocalLibrary, BUSY_TIMEOUT_MS, MAX_SUPPORTED_SCHEMA_VERSION } from './library.js';
 import { DatabaseSync, FIXTURE_WORKSPACE, makeLibraryFixture } from './library-fixture.js';
 import { pointerPath } from './pointer.js';
 import {
@@ -31,6 +34,39 @@ const makeLibrary = makeLibraryFixture;
 
 function pragma(db: SqliteDatabase, name: string): unknown {
   return Object.values(db.prepare(`PRAGMA ${name}`).get() ?? {})[0];
+}
+
+const LOCK_HOLDER = join(dirname(fileURLToPath(import.meta.url)), 'lock-holder.mjs');
+
+/**
+ * Forks `lock-holder.mjs` against `dbPath` and resolves once it reports the
+ * lock taken. `releaseAfterMs` undefined means it holds until killed.
+ */
+async function holdLocked(dbPath: string, releaseAfterMs?: number): Promise<ChildProcess> {
+  const holder = fork(LOCK_HOLDER, [dbPath, releaseAfterMs === undefined ? 'never' : String(releaseAfterMs)], {
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  let stderr = '';
+  holder.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+  await new Promise<void>((resolve, reject) => {
+    holder.on('message', (message: { type?: string }) => {
+      if (message?.type === 'held') resolve();
+    });
+    holder.on('close', () => reject(new Error(`lock holder exited early: ${stderr}`)));
+    holder.on('error', (error) => reject(new Error(`lock holder failed: ${String(error)}`)));
+  });
+  return holder;
+}
+
+/**
+ * A fingerprint of everything a write to a WAL library could touch: the main
+ * file plus its `-wal` when one exists (a write lands there first).
+ */
+function fingerprint(dbPath: string): string {
+  const hash = createHash('sha256').update(readFileSync(dbPath));
+  const wal = `${dbPath}-wal`;
+  hash.update(existsSync(wal) ? readFileSync(wal) : 'no-wal');
+  return hash.digest('hex');
 }
 
 describe('runtime floors', () => {
@@ -150,6 +186,60 @@ describe('the pointer handshake', () => {
       library.close();
     }
   });
+
+  // Both contention tests hold the file from a forked process, because the
+  // opener sleeps inside SQLite's busy handler and nothing in this event loop
+  // could release the lock while it waits (plans/local-library-open-busy-timeout.md §3).
+  it('waits out contention shorter than its bound instead of refusing (#400)', async () => {
+    const fixture = makeLibrary(dir);
+    const releaseAfterMs = 300;
+    const holder = await holdLocked(fixture.dbPath, releaseAfterMs);
+    try {
+      const started = Date.now();
+      // Before the reorder this threw at once with "could not be read
+      // (database is locked)": the version query loaded the schema, and so
+      // read the file, before `busy_timeout` was set.
+      const library = openLocalLibrary(dir);
+      try {
+        // Only "waited" versus "never blocked" matters here; before the
+        // reorder the open failed at 0 ms, so half the hold is a wide margin.
+        expect(Date.now() - started).toBeGreaterThanOrEqual(releaseAfterMs / 2);
+        expect(library.workspaceId).toBe(WORKSPACE);
+        expect(pragma(library.db, 'busy_timeout')).toBe(BUSY_TIMEOUT_MS);
+      } finally {
+        library.close();
+      }
+    } finally {
+      holder.kill();
+    }
+  }, 15_000);
+
+  it('refuses contention longer than its bound, names the lock, and writes nothing', async () => {
+    const fixture = makeLibrary(dir);
+    const holder = await holdLocked(fixture.dbPath);
+    try {
+      const before = fingerprint(fixture.dbPath);
+      const started = Date.now();
+      let error: unknown;
+      try {
+        openLocalLibrary(dir);
+      } catch (caught) {
+        error = caught;
+      }
+      const elapsed = Date.now() - started;
+      expect(error).toBeInstanceOf(LocalModeError);
+      const message = (error as Error).message;
+      expect(message).toMatch(/locked/);
+      expect(message).toContain('nothing was written');
+      expect(message).not.toContain('recreate');
+      // The bound is the constant's real value; no private override exists to
+      // shorten it for a test, which is why this one costs five seconds.
+      expect(elapsed).toBeGreaterThanOrEqual(BUSY_TIMEOUT_MS - 100);
+      expect(fingerprint(fixture.dbPath)).toBe(before);
+    } finally {
+      holder.kill();
+    }
+  }, 20_000);
 
   it('refuses a database that is not a jotnow library at all', () => {
     mkdirSync(join(dir, 'local'), { recursive: true });

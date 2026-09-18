@@ -7,7 +7,10 @@
 // What is deliberately absent: any path that could create a database.
 // Creation, WAL and migration belong to the desktop app alone (§5.3, §4.3), so
 // a missing file is a hard error and a file that is not in WAL is a corrupt
-// installation the CLI reports rather than "fixes".
+// installation the CLI reports rather than "fixes". The CLI's own obligations
+// on its connection are the two pragmas, `busy_timeout` and `foreign_keys`,
+// both before any other statement — see the note on ordering in
+// `openLocalLibrary`.
 
 import { existsSync } from 'node:fs';
 import { SQLITE_MIGRATIONS } from '../core/index.js';
@@ -114,13 +117,23 @@ export function openLocalLibrary(dir: string): LocalLibrary {
   }
 
   try {
-    assertSqliteFloor(sqliteVersionOf(db));
-
     // Explicit, both of them: sqlx's defaults cover the app's connections only
     // (§4.3). `foreign_keys` is passed as an option *and* asserted, because the
     // option's default is a property of node:sqlite rather than of this code.
-    db.exec('PRAGMA foreign_keys = ON');
+    //
+    // `busy_timeout` goes **first**, before any other statement. Neither pragma
+    // touches the file, but preparing any ordinary statement on a fresh
+    // connection loads the schema, which opens a read transaction on it — so
+    // the version query below is the first statement that reads the file, and
+    // it has to run inside the bound. With it ahead of the pragma, a sibling
+    // process mid-WAL-recovery (two captures racing while the app is closed)
+    // surfaced as an instant "database is locked" and a refusal telling the
+    // user to recreate their library (#400, measured in
+    // plans/local-library-open-busy-timeout.md §1).
     db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
+    db.exec('PRAGMA foreign_keys = ON');
+
+    assertSqliteFloor(sqliteVersionOf(db));
 
     const journalMode = String(scalar(db, 'PRAGMA journal_mode') ?? '').toLowerCase();
     if (journalMode !== 'wal') {
@@ -177,15 +190,39 @@ export function openLocalLibrary(dir: string): LocalLibrary {
   } catch (error) {
     db.close();
     if (error instanceof LocalModeError) throw error;
-    // The first statement that actually reads the file is the journal-mode
-    // pragma, outside any per-step handler — so a truncated or non-SQLite
-    // `library.db` lands here as a raw SqliteError, and it must leave in the
-    // same voice as every other refusal on this path.
+    // Contention that outlived the bound is not a broken file: another process
+    // held the library for the whole `busy_timeout`, and the truthful advice
+    // is to try again, never to recreate anything.
+    if (isSqliteBusy(error)) {
+      throw new LocalModeError(
+        `another process held the jotnow local library at ${pointer.db_path} locked for ` +
+          `longer than ${BUSY_TIMEOUT_MS / 1000} s (${String(error)}); nothing was written, ` +
+          `and nothing was sent to the server. Try again.`,
+      );
+    }
+    // The first statement that actually reads the file is the version query,
+    // now inside the bound but outside any per-step handler — so a truncated or
+    // non-SQLite `library.db` lands here as a raw SqliteError, and it must
+    // leave in the same voice as every other refusal on this path.
     throw new LocalModeError(
       `the jotnow local library at ${pointer.db_path} could not be read ` +
         `(${String(error)}). Launch the desktop app to recreate it; nothing was written.`,
     );
   }
+}
+
+/** SQLite's primary result code for `SQLITE_BUSY`. */
+const SQLITE_BUSY = 5;
+
+/**
+ * Whether a raw node:sqlite error is `SQLITE_BUSY` or one of its extended
+ * forms (`SQLITE_BUSY_RECOVERY`, `SQLITE_BUSY_SNAPSHOT`, ...). node:sqlite
+ * attaches the numeric `errcode`; the low byte is the primary code.
+ */
+function isSqliteBusy(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const errcode = (error as { errcode?: unknown }).errcode;
+  return typeof errcode === 'number' && (errcode & 0xff) === SQLITE_BUSY;
 }
 
 /**
@@ -197,6 +234,9 @@ function readWorkspaceUuid(db: SqliteDatabase, path: string): string {
   try {
     value = db.prepare(`SELECT "value" FROM "meta" WHERE "key" = 'workspace_uuid'`).get()?.value;
   } catch (error) {
+    // Contention that began after the schema load is still contention, not a
+    // foreign file: leave it to the caller's classification.
+    if (isSqliteBusy(error)) throw error;
     throw new LocalModeError(
       `${path} does not look like a jotnow library (${String(error)}). Nothing was written.`,
     );
@@ -224,6 +264,7 @@ function readSchemaVersion(db: SqliteDatabase, path: string): number {
   try {
     value = scalar(db, 'SELECT MAX(version) FROM "_sqlx_migrations"');
   } catch (error) {
+    if (isSqliteBusy(error)) throw error;
     throw new LocalModeError(
       `${path} has no migration history, so it is not a jotnow library the CLI may write ` +
         `to (${String(error)}). Nothing was written.`,
