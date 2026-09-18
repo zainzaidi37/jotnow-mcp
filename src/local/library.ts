@@ -193,13 +193,7 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     // Contention that outlived the bound is not a broken file: another process
     // held the library for the whole `busy_timeout`, and the truthful advice
     // is to try again, never to recreate anything.
-    if (isSqliteBusy(error)) {
-      throw new LocalModeError(
-        `another process held the jotnow local library at ${pointer.db_path} locked for ` +
-          `longer than ${BUSY_TIMEOUT_MS / 1000} s (${String(error)}); nothing was written, ` +
-          `and nothing was sent to the server. Try again.`,
-      );
-    }
+    if (isSqliteBusy(error)) throw busyRefusal(pointer.db_path, error);
     // The first statement that actually reads the file is the version query,
     // now inside the bound but outside any per-step handler — so a truncated or
     // non-SQLite `library.db` lands here as a raw SqliteError, and it must
@@ -215,11 +209,26 @@ export function openLocalLibrary(dir: string): LocalLibrary {
 const SQLITE_BUSY = 5;
 
 /**
+ * The one refusal for contention that outlived {@link BUSY_TIMEOUT_MS}, on
+ * the open path and the write path alike: the library is fine, nothing was
+ * written, and the advice is to try again — never to recreate anything.
+ */
+export function busyRefusal(path: string, error: unknown): LocalModeError {
+  return new LocalModeError(
+    `another process held the jotnow local library at ${path} locked for longer than ` +
+      `${BUSY_TIMEOUT_MS / 1000} s (${String(error)}); nothing was written, and nothing was ` +
+      `sent to the server. Try again.`,
+  );
+}
+
+/**
  * Whether a raw node:sqlite error is `SQLITE_BUSY` or one of its extended
  * forms (`SQLITE_BUSY_RECOVERY`, `SQLITE_BUSY_SNAPSHOT`, ...). node:sqlite
- * attaches the numeric `errcode`; the low byte is the primary code.
+ * attaches the numeric `errcode`; the low byte is the primary code. Shared
+ * with the write path (`save-note.ts`), which meets the same lock at
+ * `BEGIN IMMEDIATE`.
  */
-function isSqliteBusy(error: unknown): boolean {
+export function isSqliteBusy(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const errcode = (error as { errcode?: unknown }).errcode;
   return typeof errcode === 'number' && (errcode & 0xff) === SQLITE_BUSY;

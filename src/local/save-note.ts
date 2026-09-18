@@ -20,7 +20,7 @@ import {
 } from '../core/index.js';
 import type { SavedNote } from '../api.js';
 import { normalizeTags } from '../tagging.js';
-import type { LocalLibrary } from './library.js';
+import { busyRefusal, isSqliteBusy, type LocalLibrary } from './library.js';
 import type { SqliteDatabase } from './runtime.js';
 
 export interface LocalSaveNoteInput {
@@ -120,36 +120,50 @@ export function saveNoteLocally(library: LocalLibrary, input: LocalSaveNoteInput
   // "no folder named Work", both plan one, both insert — two folders, no
   // error. `BEGIN IMMEDIATE` serializes the whole read-plan-apply against
   // every other writer, so the second process reads the first one's folder.
-  const plan = inWriteTransaction(db, () => {
-    const folders = db
-      .prepare(
-        `SELECT "id", "name", "created_at", "deleted_at" FROM "folders" WHERE "user_id" = ?`,
-      )
-      .all(workspaceId) as unknown as ExistingFolder[];
-    const existingTags = db
-      .prepare(`SELECT "id", "name", "deleted_at" FROM "tags" WHERE "user_id" = ?`)
-      .all(workspaceId) as unknown as ExistingTag[];
+  const planAndApply = () =>
+    inWriteTransaction(db, () => {
+      const folders = db
+        .prepare(
+          `SELECT "id", "name", "created_at", "deleted_at" FROM "folders" WHERE "user_id" = ?`,
+        )
+        .all(workspaceId) as unknown as ExistingFolder[];
+      const existingTags = db
+        .prepare(`SELECT "id", "name", "deleted_at" FROM "tags" WHERE "user_id" = ?`)
+        .all(workspaceId) as unknown as ExistingTag[];
 
-    const planned = planSaveNote(
-      {
-        userId: workspaceId,
-        folders,
-        tags: existingTags,
-        now: new Date().toISOString(),
-        newId: () => randomUUID(),
-      },
-      {
-        id: randomUUID(),
-        title: input.title,
-        body: input.body,
-        tags: input.tags ? tags : undefined,
-        folder: input.folder ?? null,
-        source: input.source ?? 'mcp',
-      },
-    );
-    for (const op of planned.ops) applyOp(db, op);
-    return planned;
-  });
+      const planned = planSaveNote(
+        {
+          userId: workspaceId,
+          folders,
+          tags: existingTags,
+          now: new Date().toISOString(),
+          newId: () => randomUUID(),
+        },
+        {
+          id: randomUUID(),
+          title: input.title,
+          body: input.body,
+          tags: input.tags ? tags : undefined,
+          folder: input.folder ?? null,
+          source: input.source ?? 'mcp',
+        },
+      );
+      for (const op of planned.ops) applyOp(db, op);
+      return planned;
+    });
+
+  // `BEGIN IMMEDIATE` waits out `busy_timeout` for that lock; a writer that
+  // holds it longer surfaces as a raw `SQLITE_BUSY`, and `inWriteTransaction`
+  // has already rolled back (or never began), so the truthful line is the
+  // same contention refusal the open path gives — not a bare "database is
+  // locked" that leaves the user unsure whether the jot half-landed.
+  let plan: ReturnType<typeof planSaveNote>;
+  try {
+    plan = planAndApply();
+  } catch (error) {
+    if (isSqliteBusy(error)) throw busyRefusal(library.path, error);
+    throw error;
+  }
 
   return {
     id: plan.note.id,

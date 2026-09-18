@@ -6,9 +6,11 @@
 // canonical migrations from the vendored core, a `_sqlx_migrations` history,
 // and the one `meta` key that is ever minted — plus PR A's pointer file.
 
+import { fork, type ChildProcess } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { SQLITE_MIGRATIONS } from '../core/index.js';
 import { pointerPath } from './pointer.js';
 import type { SqliteDatabaseConstructor } from './runtime.js';
@@ -90,4 +92,36 @@ export function makeLibraryFixture(dir: string, options: LibraryFixtureOptions =
   }
 
   return { dir, dbPath, workspaceId, schemaVersion };
+}
+
+const LOCK_HOLDER = join(dirname(fileURLToPath(import.meta.url)), 'lock-holder.mjs');
+
+export interface HoldLockedOptions {
+  /** Undefined holds until the holder is killed (bounded by its own ceiling). */
+  readonly releaseAfterMs?: number;
+  /** `exclusive` blocks every connection; `write` blocks writers only. */
+  readonly mode?: 'exclusive' | 'write';
+}
+
+/**
+ * Forks `lock-holder.mjs` against `dbPath` and resolves once it reports the
+ * lock taken. The caller kills it in a `finally`. A separate process because
+ * the code under test sleeps inside SQLite's busy handler, so nothing on the
+ * test's own event loop could release a lock while it waits.
+ */
+export async function holdLocked(dbPath: string, options: HoldLockedOptions = {}): Promise<ChildProcess> {
+  const releaseAfter = options.releaseAfterMs === undefined ? 'never' : String(options.releaseAfterMs);
+  const holder = fork(LOCK_HOLDER, [dbPath, releaseAfter, options.mode ?? 'exclusive'], {
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  let stderr = '';
+  holder.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+  await new Promise<void>((resolve, reject) => {
+    holder.on('message', (message: { type?: string }) => {
+      if (message?.type === 'held') resolve();
+    });
+    holder.on('close', () => reject(new Error(`lock holder exited early: ${stderr}`)));
+    holder.on('error', (error) => reject(new Error(`lock holder failed: ${String(error)}`)));
+  });
+  return holder;
 }

@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { planSaveNote } from '../core/index.js';
-import { openLocalLibrary, type LocalLibrary } from './library.js';
-import { FIXTURE_WORKSPACE, makeLibraryFixture } from './library-fixture.js';
+import { openLocalLibrary, BUSY_TIMEOUT_MS, type LocalLibrary } from './library.js';
+import { FIXTURE_WORKSPACE, holdLocked, makeLibraryFixture } from './library-fixture.js';
+import { LocalModeError } from './runtime.js';
 import { applySaveNotePlan, saveNoteLocally } from './save-note.js';
 
 /**
@@ -35,6 +36,49 @@ describe('saveNoteLocally', () => {
     library.close();
     rmSync(dir, { recursive: true, force: true });
   });
+
+  // Both contention tests hold the write lock from a forked process, because
+  // `BEGIN IMMEDIATE` sleeps inside SQLite's busy handler and nothing in this
+  // event loop could release the lock while it waits. The holder's `write`
+  // mode leaves readers free, which is what lets the assertions read the
+  // library while the lock is still held.
+  it('waits out a writer that releases within the bound', async () => {
+    const releaseAfterMs = 300;
+    const holder = await holdLocked(library.path, { releaseAfterMs, mode: 'write' });
+    try {
+      const started = Date.now();
+      const saved = saveNoteLocally(library, { title: 'waited', body: '', tags: ['t'] });
+      expect(Date.now() - started).toBeGreaterThanOrEqual(releaseAfterMs / 2);
+      expect(rows(library, 'notes').map((note) => note.id)).toEqual([saved.id]);
+    } finally {
+      holder.kill();
+    }
+  }, 15_000);
+
+  it('refuses a writer that outlives the bound as contention, with nothing written', async () => {
+    const holder = await holdLocked(library.path, { mode: 'write' });
+    try {
+      const started = Date.now();
+      let error: unknown;
+      try {
+        saveNoteLocally(library, { title: 'blocked', body: '', folder: 'Work', tags: ['t'] });
+      } catch (caught) {
+        error = caught;
+      }
+      expect(Date.now() - started).toBeGreaterThanOrEqual(BUSY_TIMEOUT_MS - 100);
+      expect(error).toBeInstanceOf(LocalModeError);
+      const message = (error as Error).message;
+      expect(message).toMatch(/locked/);
+      expect(message).toContain('nothing was written');
+      expect(message).not.toContain('recreate');
+      // The refusal is the whole story: no note, no folder, no tag landed.
+      expect(rows(library, 'notes')).toEqual([]);
+      expect(rows(library, 'folders')).toEqual([]);
+      expect(rows(library, 'tags')).toEqual([]);
+    } finally {
+      holder.kill();
+    }
+  }, 20_000);
 
   it('writes the note, its folder and its tags, all owned by the library workspace', () => {
     const saved = saveNoteLocally(library, {
