@@ -876,6 +876,27 @@ export const UsageLimitsSchema = z.object({
    */
   voice_credits_monthly_limit: z.number().int().positive().nullable().optional(),
   voice_credit_rates: z.array(VoiceCreditRateSchema).optional(),
+  /**
+   * The longest single recording this deployment accepts, in seconds
+   * (`VOICE_MAX_SECONDS`, default 120).
+   *
+   * `.optional()` for the same N−1 reason as the two fields above, and with
+   * the same client contract: **absent means "this backend did not say"**, and
+   * the client falls back to its own constant rather than erroring.
+   *
+   * It is on the wire at all because without it a lowered ceiling is
+   * unreachable. The client caps its own recording, so if it capped at 120
+   * against a deployment configured at 30, every request would be refused
+   * `cap_too_large` before any provider spend and paid dictation would be
+   * dead for that operator with no way to discover why. The client takes
+   * `min(server, client)`.
+   *
+   * Not nullable: unlike the quota ceilings there is no "uncapped" reading —
+   * an unbounded single request is the cost-safety hole §7 exists to close,
+   * and `maxCapSeconds()` collapses the `unlimited` sentinel to the default
+   * for that reason.
+   */
+  voice_max_seconds: z.number().int().positive().optional(),
 });
 export type UsageLimits = z.infer<typeof UsageLimitsSchema>;
 
