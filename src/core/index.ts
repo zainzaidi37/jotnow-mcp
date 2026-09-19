@@ -569,6 +569,13 @@ const TidyRetagNotePayloadSchema = z.object({
       tag_id: uuid,
       name: z.string(),
       link_revived: z.boolean(),
+      /**
+       * The link's `sync_seq` as this run left it. The undo fences its delete
+       * on it, so a link the user removed and re-added is not deleted again
+       * (audit finding F6). Optional because every entry logged before the
+       * fence shipped carries no value, and those keep the older behaviour.
+       */
+      sync_seq: z.number().int().optional(),
     }),
   ),
   removed: z.array(z.object({ tag_id: uuid, name: z.string() })),
@@ -581,7 +588,16 @@ const TidyMergeTagsPayloadSchema = z.object({
     z.object({
       tag_id: uuid,
       name: z.string(),
-      moved: z.array(z.object({ note_id: uuid, winner_link_created: z.boolean() })),
+      moved: z.array(
+        z.object({
+          note_id: uuid,
+          winner_link_created: z.boolean(),
+          /** The created winner link's `sync_seq`; see `added.sync_seq`. Only
+           * present where `winner_link_created` is true, because that is the
+           * only case the undo deletes the link again. */
+          winner_link_sync_seq: z.number().int().optional(),
+        }),
+      ),
     }),
   ),
 });
