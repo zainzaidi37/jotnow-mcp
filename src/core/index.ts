@@ -878,7 +878,7 @@ export const UsageLimitsSchema = z.object({
   voice_credit_rates: z.array(VoiceCreditRateSchema).optional(),
   /**
    * The longest single recording this deployment accepts, in seconds
-   * (`VOICE_MAX_SECONDS`, default 120).
+   * (`VOICE_MAX_SECONDS`, default 300).
    *
    * `.optional()` for the same N−1 reason as the two fields above, and with
    * the same client contract: **absent means "this backend did not say"**, and
