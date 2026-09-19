@@ -763,6 +763,15 @@ export const RecallUsageSchema = z.object({
   month: z.string().regex(PERIOD_KEY_PATTERN),
   count: z.number().int(),
   semantic_search_count: z.number().int(),
+  /**
+   * Dictation credits and audio seconds spent in this period
+   * (`plans/voice-to-text.md` §3b). Two counters and not one: credits are the
+   * meter, seconds are the audit trail that makes a future re-pricing
+   * reconcilable — and the figure a human is actually shown. Both are `not
+   * null default 0` on the table, so a row always carries them.
+   */
+  voice_credits: z.number().int(),
+  voice_seconds: z.number().int(),
   created_at: timestamptz,
   updated_at: timestamptz,
   deleted_at: timestamptz.nullable(),
@@ -781,8 +790,38 @@ export const RecallPeriodUsageSchema = z.object({
   period_end: timestamptz,
   recall_count: z.number().int(),
   semantic_search_count: z.number().int(),
+  /**
+   * Dictation counters, `.optional()` for the same reason the voice fields on
+   * {@link UsageLimitsSchema} are. This RPC's return shape is a property of
+   * the *database*, and on BYO the database is whatever the operator last ran
+   * `update` against while `byo.jotnow.dev` serves them the newest client. A
+   * backend one release behind returns five columns, not seven; requiring
+   * these would throw on the Usage tab of every operator who has not updated,
+   * which is the normal state during a rollout rather than a fault. Read them
+   * as zero when absent.
+   */
+  voice_credits: z.number().int().optional(),
+  voice_seconds: z.number().int().optional(),
 });
 export type RecallPeriodUsage = z.infer<typeof RecallPeriodUsageSchema>;
+
+/**
+ * One dictation engine's price, as the server publishes it
+ * (`plans/voice-to-text.md` §2b, verified 2026-09-19). Mirrors
+ * `supabase/functions/_shared/voice-credits.ts`, which is the server's copy,
+ * and `apps/web/src/lib/voice/credits.ts`, which is the client's fallback.
+ *
+ * `model` is deliberately a plain string rather than an enum: the rate table
+ * is *data* the server owns, and a client that rejected a row naming an
+ * engine it had not heard of would fail the whole response the first time a
+ * newer backend added one.
+ */
+export const VoiceCreditRateSchema = z.object({
+  model: z.string().min(1),
+  credits_per_minute: z.number().int().positive(),
+  is_default: z.boolean(),
+});
+export type VoiceCreditRate = z.infer<typeof VoiceCreditRateSchema>;
 
 /**
  * Effective per-period limits returned by the authenticated usage-limits
@@ -802,6 +841,25 @@ export const UsageLimitsSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/),
   recall_monthly_limit: z.number().int().positive().nullable(),
   history_search_monthly_limit: z.number().int().positive().nullable(),
+  /**
+   * Dictation's separate ceiling and the prices behind it
+   * (`plans/voice-to-text.md` §3f). **Both are `.optional()`, and that is
+   * load-bearing rather than tidy.** The frontend ↔ Edge Function axis is
+   * ungated on BYO: `byo.jotnow.dev` serves catalog head to every operator
+   * while the backend they own is whatever they last ran `update` against, so
+   * a newer client routinely meets a `usage-limits` that has never heard of
+   * voice. **Absence is the normal case during a rollout, not a fault** —
+   * requiring either field would throw for every operator who has not
+   * updated. The client falls back to its own copy of the rate table and
+   * never errors.
+   *
+   * `null` on the limit keeps its established meaning from the two fields
+   * above: uncapped, which a self-hosted operator reaches with
+   * `VOICE_CREDITS_MONTHLY_LIMIT=unlimited`. Undefined means "this backend
+   * did not say"; the two are different answers and the UI treats them so.
+   */
+  voice_credits_monthly_limit: z.number().int().positive().nullable().optional(),
+  voice_credit_rates: z.array(VoiceCreditRateSchema).optional(),
 });
 export type UsageLimits = z.infer<typeof UsageLimitsSchema>;
 
