@@ -1108,6 +1108,41 @@ export const ServerTagSchema = TagSchema.extend({ sync_seq: syncSeq });
 export const ServerNoteTagSchema = NoteTagSchema.extend({ sync_seq: syncSeq });
 
 /**
+ * `public.sync_status()`'s payload (20260920090000_sync_status.sql): the
+ * snapshot watermark plus each synced table's highest `sync_seq` visible to
+ * the caller, all from one snapshot.
+ *
+ * It mirrors a SQL contract, so it lives beside the server-row schemas and is
+ * parsed at the boundary rather than trusted. A null max means the caller has
+ * no rows in that table; the client reads that as "nothing to fetch", which is
+ * exactly the answer a missing or misspelled key must NOT be allowed to
+ * impersonate — hence required keys and a parse error rather than a default.
+ *
+ * Both the watermark and the maxes are `bigint` in Postgres. xid8-derived
+ * values are far below `MAX_SAFE_INTEGER` (see the fence migration), so they
+ * are safe as JS numbers, and a numeric string is coerced the way the client
+ * has always coerced `sync_watermark()`'s scalar — one Postgres/PostgREST
+ * bigint-serialization difference must not take the whole pull down. Anything
+ * that is not a number or a numeric string still fails the parse.
+ *
+ * Plain `z.object`, never `.strict()`: like the server-row schemas it strips
+ * unknown keys, so adding a table to a later `sync_status()` cannot break an
+ * already-deployed client.
+ */
+const bigintNumber = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() !== '' ? Number(value) : value),
+  syncSeq,
+);
+export const SyncStatusSchema = z.object({
+  watermark: bigintNumber,
+  folders: bigintNumber.nullable(),
+  tags: bigintNumber.nullable(),
+  notes: bigintNumber.nullable(),
+  note_tags: bigintNumber.nullable(),
+});
+export type SyncStatus = z.infer<typeof SyncStatusSchema>;
+
+/**
  * The canonical SQLite schema for the local store, emitted into the desktop
  * crate's migrations (plans/desktop-app.md §4.4). Re-exported here so the
  * column map — the one source for what columns exist — is reachable from the
