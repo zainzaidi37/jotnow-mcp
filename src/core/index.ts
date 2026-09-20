@@ -1151,6 +1151,110 @@ export const SyncStatusSchema = z.object({
 export type SyncStatus = z.infer<typeof SyncStatusSchema>;
 
 /**
+ * Image attachments (plans/image-attachments-2026-09-20.md §3.1–§3.2, §4.3).
+ *
+ * These mirror a SQL contract — `20260920115518_note_attachments_bucket.sql` —
+ * exactly as the row schemas above mirror their tables, and they are pinned to
+ * that file by `supabase/tests/attachments-contract.unit.test.ts`. They live in
+ * core rather than in the SPA because the same constants describe the Supabase
+ * backend and the later R2 one, and because a self-hosted operator's client and
+ * their database must agree on them.
+ *
+ * There is deliberately no attachment *row* schema: the object key is minted at
+ * upload time and the public URL lives in the note body, so nothing about an
+ * attachment is synced, exported as a manifest row, or held in the outbox.
+ */
+export const ATTACHMENT_BUCKET = 'note-attachments';
+
+/**
+ * The extensions the bucket's name-shape policy admits, and the declared MIME
+ * type each one maps to. The map is the whole reason this is not just a list:
+ * Storage checks `allowed_mime_types` against the *declared* Content-Type, so
+ * an uploader that declares the wrong type for its extension is rejected by
+ * the server rather than silently storing a mislabelled object.
+ *
+ * `jpg` and `jpeg` both map to `image/jpeg`; the policy regex accepts `jpe?g`.
+ */
+export const ATTACHMENT_MIME_TYPES = {
+  webp: 'image/webp',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+} as const;
+
+export type AttachmentExtension = keyof typeof ATTACHMENT_MIME_TYPES;
+export const ATTACHMENT_EXTENSIONS = Object.keys(
+  ATTACHMENT_MIME_TYPES,
+) as readonly AttachmentExtension[];
+
+/**
+ * The object key shape, as a regex identical to the one in the INSERT policy.
+ * `<uid>/<uuid>.<ext>`: the first segment is the tenant boundary the policy
+ * checks against `auth.uid()`, the second is a client-minted UUID, and nothing
+ * in the key comes from a filename, a body path or a content hash.
+ *
+ * Kept as a source-of-truth constant so a client can refuse a malformed key
+ * before a round trip — never as the authorization. The policy is.
+ */
+export const ATTACHMENT_KEY_PATTERN = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(webp|png|jpe?g)$/;
+
+/**
+ * Per-object ceiling, enforced server-side by `storage.buckets.file_size_limit`.
+ *
+ * Exactly `MAX_IMPORT_FILE_BYTES` (25 MiB), so no stored attachment can be one
+ * an export round trip's own importer would reject.
+ */
+export const ATTACHMENT_MAX_OBJECT_BYTES = 25 * 1024 * 1024;
+
+/**
+ * Per-user ceilings, checked before an upload against `attachment_usage()`.
+ *
+ * On the Supabase backend these are **advisory** (plan D9): the browser uploads
+ * directly under RLS, so a session-JWT holder can PUT past them, and it is the
+ * operator's own project and bill. On the hosted R2 backend the equivalent
+ * check happens inside the grant function, where it is real.
+ *
+ * The count ceiling is not redundant with the byte ceiling: bytes alone permit
+ * millions of tiny objects, which costs per-write charges and would make any
+ * bounded listing of a prefix incomplete. `attachment_usage()` stops scanning
+ * at `ATTACHMENT_OBJECT_COUNT_LIMIT + 1` rows for that reason and reports
+ * `truncated`, which a caller must treat as over-quota rather than as a
+ * prompt to scan further.
+ */
+export const ATTACHMENT_TOTAL_BYTES_LIMIT = 1024 * 1024 * 1024;
+export const ATTACHMENT_OBJECT_COUNT_LIMIT = 2000;
+
+/** `public.attachment_usage()`'s payload. */
+export const AttachmentUsageSchema = z.object({
+  total_bytes: z.number().int().nonnegative(),
+  object_count: z.number().int().nonnegative(),
+  truncated: z.boolean(),
+});
+export type AttachmentUsage = z.infer<typeof AttachmentUsageSchema>;
+
+/**
+ * What an upload returns: the permanent, absolute, public URL for the body.
+ *
+ * Constrained to `http(s)` on purpose. `z.string().url()` alone accepts a
+ * `data:` URI, and a base64 image in a note body is the trap this design exists
+ * to avoid: a 2 MB screenshot becomes ~2.7 MB of text travelling through the
+ * outbox, a Postgres `text` column, PostgREST JSON, MiniSearch, the embedding
+ * request, the `BroadcastChannel` clone and every export. A `blob:` URL is the
+ * other near miss — it is session-scoped, so it would render for its author and
+ * be broken for everyone and every agent. Neither can reach a body through this
+ * boundary.
+ */
+export const UploadedAttachmentSchema = z.object({
+  publicUrl: z
+    .string()
+    .url()
+    .refine((value) => /^https?:\/\//.test(value), {
+      message: 'An attachment URL must be absolute http(s) — never a data: or blob: URL',
+    }),
+});
+export type UploadedAttachment = z.infer<typeof UploadedAttachmentSchema>;
+
+/**
  * The canonical SQLite schema for the local store, emitted into the desktop
  * crate's migrations (plans/desktop-app.md §4.4). Re-exported here so the
  * column map — the one source for what columns exist — is reachable from the
