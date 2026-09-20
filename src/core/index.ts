@@ -289,6 +289,14 @@ export const NoteEmbeddingSchema = z.object({
   note_id: uuid,
   user_id: uuid,
   embedding: z.array(z.number()).length(EMBEDDING_DIM),
+  // A model-written one-line summary (20260708171220); null means generation
+  // was attempted and failed, never that the note has nothing worth
+  // summarizing.
+  gist: z.string().nullable(),
+  // notes.sync_seq the embedded content was read at (20260920100000). Null on
+  // rows written before the fence existed, or by a writer that omitted it;
+  // note_embeddings_refuse_stale skips an update carrying a lower value.
+  source_seq: syncSeq.nullable(),
   created_at: timestamptz,
   updated_at: timestamptz,
 });
