@@ -1175,3 +1175,16 @@ export * from './save-note.js';
 // local-store.ts, for the column map), so anything exported from it can end up
 // in the app bundle — and a test-only Zod schema has no business shipping to a
 // browser. Test runners import that module by path.
+
+/**
+ * The `/admin` dashboard's response contract (`plans/admin-analytics.md` §5).
+ *
+ * Barrel-reachable because the SPA's admin route parses the Edge Function's
+ * body with it, and every other wire schema the SPA validates lives here. The
+ * cost of that placement is that the vendoring generator above copies it into
+ * `packages/mcp/src/core` as well, where nothing uses it: the closure rule is
+ * deliberately mechanical, and a second fence for one module would be a worse
+ * trade than a few hundred unused lines in a package that already ships the
+ * whole row model.
+ */
+export * from './admin-analytics.js';
