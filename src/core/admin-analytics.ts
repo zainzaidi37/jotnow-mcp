@@ -203,3 +203,143 @@ export const AdminAnalyticsSchema = z.object({
   traffic: AdminAnalyticsTrafficSchema,
 });
 export type AdminAnalytics = z.infer<typeof AdminAnalyticsSchema>;
+
+/* ---------- the users section (plans/admin-users-and-actions.md §4.1) ---------- */
+
+/**
+ * An ISO-8601 instant with an offset, as Postgres serialises a `timestamptz`
+ * into jsonb (`2026-09-20T21:25:45.369666+00:00`).
+ */
+const isoInstant = z.string().datetime({ offset: true });
+
+/**
+ * How far an account has got, as one label rather than five booleans.
+ *
+ * It is the *highest step reached*, where the dashboard's funnel counts
+ * cohorts that passed every earlier one — so a Pro account that never asked a
+ * Recall is `pro` here and absent from the funnel's last step. The two answer
+ * different questions and neither is the other's summary.
+ */
+export const ADMIN_USER_STAGES = ['signed_up', 'noted', 'connected', 'recalled', 'pro'] as const;
+export type AdminUserStage = (typeof ADMIN_USER_STAGES)[number];
+
+/** The two orderings `admin_users` offers. Anything else reads as `signup`. */
+export const ADMIN_USER_SORTS = ['signup', 'last_active'] as const;
+export type AdminUserSort = (typeof ADMIN_USER_SORTS)[number];
+
+/**
+ * One account, as `public.admin_users` returns it.
+ *
+ * THE PRIVACY LINE THIS SHAPE DRAWS. Every field is an identifier, a
+ * timestamp, a plan, or a count. There is no note title or body, no folder or
+ * tag name, no Recall query or answer, no tidy instruction, and no API key
+ * name or prefix — a key's name is text its owner wrote, so it stays out even
+ * though the rest of the key row is metadata. The operator may see who a user
+ * is and how much they use the product; never what they wrote. The routine's
+ * whole-payload test is what enforces that, and this schema is what would
+ * have to be widened before anything else could reach the page.
+ *
+ * `email` is nullable because `auth.users.email` is: an account can exist
+ * without one, and a 500 is a worse answer than a dash in a cell.
+ */
+export const AdminUserRowSchema = z.object({
+  user_id: z.string().uuid(),
+  email: z.string().nullable(),
+  email_confirmed_at: isoInstant.nullable(),
+  created_at: isoInstant,
+  last_sign_in_at: isoInstant.nullable(),
+  plan: z.enum(['free', 'pro']),
+  plan_event_at: isoInstant.nullable(),
+  billing_ref: z.string().nullable(),
+  billing_period_start: isoInstant.nullable(),
+  billing_period_end: isoInstant.nullable(),
+  notes_live: count,
+  notes_trashed: count,
+  notes_by_source: z.object({ web: count, mcp: count, cli: count, vscode: count }),
+  keys_live: count,
+  keys_last_used_at: isoInstant.nullable(),
+  recalls_total: count,
+  /** Rows in the user's *current billing period*, not in the dashboard range. */
+  recalls_period: count,
+  /** `recall_usage.count` for that period — the metered figure, which refunds move. */
+  recall_quota_used: count,
+  tidy_runs_total: count,
+  voice_seconds_period: count,
+  /**
+   * The latest activity signal of `plans/admin-analytics.md` §3.1, or null for
+   * an account that has shown none. Null is a real answer and not a zero; the
+   * `last_active` *ordering* falls back to the signup date so such an account
+   * still has a place in the list.
+   */
+  last_active: isoInstant.nullable(),
+  stage: z.enum(ADMIN_USER_STAGES),
+});
+export type AdminUserRow = z.infer<typeof AdminUserRowSchema>;
+
+/**
+ * Where the next page starts: the whole sort key of this page's last row.
+ *
+ * Both halves, never just the timestamp. The routine orders by
+ * `(sort_at, user_id)`, so a cursor carrying only the instant would skip every
+ * row tied with the last one on the page — and ties are ordinary here, since
+ * two accounts created in the same statement share a `created_at` exactly.
+ */
+export const AdminUsersCursorSchema = z.object({
+  before: isoInstant,
+  before_id: z.string().uuid(),
+});
+export type AdminUsersCursor = z.infer<typeof AdminUsersCursorSchema>;
+
+/**
+ * One page of accounts.
+ *
+ * Only a FULL page can carry a cursor: a short page means the filter is
+ * exhausted, so "Load more" is absent rather than present and fruitless. The
+ * comparison is strict, which is what makes two consecutive pages disjoint as
+ * well as complete.
+ */
+export const AdminUsersResponseSchema = z.object({
+  rows: z.array(AdminUserRowSchema),
+  next_cursor: AdminUsersCursorSchema.nullable(),
+});
+export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>;
+
+/**
+ * One account in detail: the same row, plus the last 30 UTC days of activity.
+ *
+ * The row is not restated in SQL either — `admin_user_detail` narrows
+ * `admin_users` to one id — so the drawer and the table can never disagree
+ * about what a field means.
+ */
+export const AdminUserDetailSchema = AdminUserRowSchema.extend({
+  activity_by_day: z.array(
+    z.object({ date: isoDate, notes: count, recalls: count, tidy: count }),
+  ),
+});
+export type AdminUserDetail = z.infer<typeof AdminUserDetailSchema>;
+
+/**
+ * Which section of the dashboard a request asks for.
+ *
+ * One endpoint, three shapes, rather than three functions: the gate, the
+ * `verify_jwt` pin and the service client are the same in every case, and a
+ * second admin function would be a second place to get that wrong. `overview`
+ * is the default so an older client that sends only `{ days }` keeps working.
+ */
+export const AdminUsersQuerySchema = z.object({
+  section: z.literal('users'),
+  limit: z.number().int().min(1).max(100).optional(),
+  /** Both halves of the previous page's last sort key, or neither. */
+  before: isoInstant.optional(),
+  before_id: z.string().uuid().optional(),
+  /** Email prefix or an exact user id. Long enough for either, bounded anyway. */
+  search: z.string().max(320).optional(),
+  sort: z.enum(ADMIN_USER_SORTS).optional(),
+});
+export type AdminUsersQuery = z.infer<typeof AdminUsersQuerySchema>;
+
+export const AdminUserQuerySchema = z.object({
+  section: z.literal('user'),
+  user_id: z.string().uuid(),
+});
+export type AdminUserQuery = z.infer<typeof AdminUserQuerySchema>;
