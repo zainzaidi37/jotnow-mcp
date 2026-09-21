@@ -273,6 +273,15 @@ export const AdminUserRowSchema = z.object({
    */
   last_active: isoInstant.nullable(),
   stage: z.enum(ADMIN_USER_STAGES),
+  /**
+   * Banned in GoTrue, and still banned now.
+   *
+   * A boolean rather than the `banned_until` timestamp, because the timestamp
+   * is `suspend`'s implementation — a hundred years out — and an expired one
+   * would read as a suspension that is still in force. Suspension is metadata:
+   * the account cannot sign in and every row it owns is untouched.
+   */
+  suspended: z.boolean(),
 });
 export type AdminUserRow = z.infer<typeof AdminUserRowSchema>;
 
@@ -343,3 +352,95 @@ export const AdminUserQuerySchema = z.object({
   user_id: z.string().uuid(),
 });
 export type AdminUserQuery = z.infer<typeof AdminUserQuerySchema>;
+
+/* ---------- the audit log (plans/admin-users-and-actions.md §5) ---------- */
+
+/**
+ * The closed action vocabulary.
+ *
+ * Closed is the point (`plans/admin-users-and-actions.md` §0): each name is
+ * one dedicated SQL routine or one auth admin call, each is recorded before it
+ * returns, and each is behind a confirm step that types the target's email.
+ * There is no free-form SQL path and no generic "update this account" verb, so
+ * an audit row's `action` is a complete description of what happened rather
+ * than a label on an arbitrary statement.
+ */
+export const ADMIN_ACTIONS = [
+  'grant_pro',
+  'revoke_pro',
+  'reset_recall_quota',
+  'revoke_keys',
+  'send_magic_link',
+  'resend_confirmation',
+  'suspend',
+  'unsuspend',
+  'purge_account',
+] as const;
+export type AdminAction = (typeof ADMIN_ACTIONS)[number];
+
+/**
+ * One request to perform one action.
+ *
+ * `confirm_email` is the server half of the typed confirmation: the UI
+ * disables its button until the operator has typed the target's address, and
+ * the function refuses the call unless the string equals the target's CURRENT
+ * email lower-cased. The client check is a courtesy; this one is the rule, and
+ * it is what stops a stale drawer acting on the account that has since taken
+ * that row's place.
+ *
+ * `reason` may be empty — an operator in a hurry should not be made to invent
+ * prose — but it is bounded, because it is stored verbatim in a row nobody
+ * ever deletes.
+ */
+export const AdminActionRequestSchema = z.object({
+  action: z.enum(ADMIN_ACTIONS),
+  user_id: z.string().uuid(),
+  confirm_email: z.string().min(1).max(320),
+  reason: z.string().max(500),
+});
+export type AdminActionRequest = z.infer<typeof AdminActionRequestSchema>;
+
+/**
+ * What an action returns.
+ *
+ * `audit_id` is always present, including on the 500 path, because the row is
+ * written before the action runs: an action is never performed without a trace
+ * and a trace never claims a success it did not observe. `result` is whatever
+ * the routine or the auth call reported — counts, the period key, the plan it
+ * moved from — and never a link, a token or an OTP.
+ */
+export const AdminActionResponseSchema = z.object({
+  ok: z.literal(true),
+  audit_id: z.string().uuid(),
+  result: z.record(z.unknown()),
+});
+export type AdminActionResponse = z.infer<typeof AdminActionResponseSchema>;
+
+/**
+ * One row of the log.
+ *
+ * `target_email` is stored beside `target_user_id` rather than joined, because
+ * after `purge_account` the id resolves to nothing and a log that cannot say
+ * who an action was about is not a log.
+ */
+export const AdminAuditRowSchema = z.object({
+  id: z.string().uuid(),
+  at: isoInstant,
+  admin_email: z.string(),
+  action: z.string(),
+  target_user_id: z.string().uuid(),
+  target_email: z.string(),
+  reason: z.string(),
+  detail: z.record(z.unknown()),
+});
+export type AdminAuditRow = z.infer<typeof AdminAuditRowSchema>;
+
+export const AdminAuditResponseSchema = z.object({ rows: z.array(AdminAuditRowSchema) });
+export type AdminAuditResponse = z.infer<typeof AdminAuditResponseSchema>;
+
+/** The dashboard's fourth section: the last N audit rows, newest first. */
+export const AdminAuditQuerySchema = z.object({
+  section: z.literal('audit'),
+  limit: z.number().int().min(1).max(200).optional(),
+});
+export type AdminAuditQuery = z.infer<typeof AdminAuditQuerySchema>;
