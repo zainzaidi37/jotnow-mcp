@@ -676,7 +676,7 @@ export const TidyStreamEventSchema = z.discriminatedUnion('event', [
        * waitUntil`, §0) into "Tidiness failed — malformed stream data." on any
        * bundle cached before that deploy. The server itself still emits only
        * `'planning'` and `'applying'` — enforced by a narrow helper
-       * server-side (`tidy-notes/index.ts`'s `TidyStreamContext.progress`) —
+       * server-side (`tidy-notes/stream.ts`'s `TidyStreamContext.progress`) —
        * until the 2026 stale bundles have aged out; widening here just means a
        * value it *does* send one day parses instead of crashing every browser
        * that hasn't refreshed. See the forward-compat test in index.test.ts.
