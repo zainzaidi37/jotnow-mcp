@@ -49,6 +49,8 @@ Usage:
                                  store your API key for this machine (input hidden)
   jotnow use local|account       choose where jots are written on this machine
   jotnow where                   show which library jots go to, and why
+  jotnow help                    print this help (also --help, -h)
+  jotnow --version               print the installed version (also -v, version)
 
 Environment:
   JOTNOW_API_KEY   API key from the web app (Settings → API keys); overrides
@@ -146,7 +148,9 @@ export function terminalSafe(text: string): string {
 
 function printHit(hit: SearchHit): void {
   const tags = hit.tags.map(terminalSafe).join(', ') || 'none';
-  console.log(`${hit.updated_at.slice(0, 10)}  ${terminalSafe(hit.title) || '(untitled)'}  [${tags}]  (${hit.id})`);
+  console.log(
+    `${hit.updated_at.slice(0, 10)}  ${terminalSafe(hit.title) || '(untitled)'}  [${tags}]  (${hit.id})`,
+  );
 }
 
 function printSearch({ notes, total }: SearchResult, query: string): void {
@@ -326,7 +330,9 @@ function readTtySetup(
       reject(error);
     };
 
-    output.write(needProject ? 'Supabase project ref or URL: ' : 'Paste your Jotnow API key (input hidden): ');
+    output.write(
+      needProject ? 'Supabase project ref or URL: ' : 'Paste your Jotnow API key (input hidden): ',
+    );
     input.setRawMode?.(true);
     input.resume?.();
     input.on('data', onData);
@@ -343,7 +349,8 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
 
   const input = deps.input ?? (process.stdin as unknown as ReadHiddenLineOptions['input']);
   const isTTY = deps.isTTY ?? Boolean((input as unknown as { isTTY?: boolean }).isTTY);
-  const needsProjectInput = !flags.has('api-url') && !env.JOTNOW_API_URL?.trim() && !deps.readProject;
+  const needsProjectInput =
+    !flags.has('api-url') && !env.JOTNOW_API_URL?.trim() && !deps.readProject;
   const suppliedKey = flags.get('key') ?? env.JOTNOW_API_KEY?.trim();
   const needsKeyInput = !suppliedKey && !deps.readHidden;
   let piped: string[] | undefined;
@@ -372,13 +379,17 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
     apiUrl = selfHostApiUrl(project);
   }
 
-  const key = suppliedKey || (deps.readHidden
-    ? await deps.readHidden()
-    : isTTY
-      ? (ttyAnswers?.key ?? '')
-      : (stdout.write('Paste your Jotnow API key (input hidden): \n'), piped?.shift() ?? ''));
+  const key =
+    suppliedKey ||
+    (deps.readHidden
+      ? await deps.readHidden()
+      : isTTY
+        ? (ttyAnswers?.key ?? '')
+        : (stdout.write('Paste your Jotnow API key (input hidden): \n'), piped?.shift() ?? ''));
   if (!API_KEY_PATTERN.test(key)) {
-    throw new Error('that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
+    throw new Error(
+      'that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.',
+    );
   }
 
   const api = new NotesApi({ apiUrl, apiKey: key });
@@ -466,7 +477,9 @@ export function runWhere(env: NodeJS.ProcessEnv): void {
       );
     } catch (error) {
       console.log(`target: unavailable`);
-      console.log(`error:  ${terminalSafe(error instanceof Error ? error.message : String(error))}`);
+      console.log(
+        `error:  ${terminalSafe(error instanceof Error ? error.message : String(error))}`,
+      );
       process.exitCode = 1;
     }
     return;
@@ -526,7 +539,9 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
   rejectUnknownFlags(deps.flags ?? new Map(), ['api-url']);
   const key = await readHidden();
   if (!API_KEY_PATTERN.test(key)) {
-    throw new Error('that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.');
+    throw new Error(
+      'that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.',
+    );
   }
 
   const apiUrl = selectedApiUrl(deps.flags ?? new Map(), env);
@@ -598,7 +613,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         return;
       case 'add': {
         const title = positional[0];
-        if (!title) throw new Error('usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]');
+        if (!title)
+          throw new Error(
+            'usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]',
+          );
         const body = flags.get('body') ?? (process.stdin.isTTY ? '' : await readStdin());
         const api = resolveBackend(process.env).backend;
         const note = await api.saveNote({
@@ -632,7 +650,9 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         if (!id) throw new Error('usage: jotnow get <id>');
         const note = await resolveBackend(process.env).backend.getNote(id);
         const tags = note.tags.map(terminalSafe).join(', ') || 'none';
-        console.log(`${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`);
+        console.log(
+          `${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`,
+        );
         console.log('');
         console.log(terminalSafe(note.body));
         return;
@@ -648,11 +668,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       case '-h':
         console.log(HELP);
         return;
+      // The README points users at "0.4.3 or newer"; this is how the installed
+      // CLI answers that. Same constant the MCP handshake reports.
+      case 'version':
+      case '--version':
+      case '-v':
+        console.log(VERSION);
+        return;
       default:
         throw new Error(`unknown command "${command}" — run jotnow help`);
     }
   } catch (error) {
-    const message = error instanceof ApiError || error instanceof Error ? error.message : String(error);
+    const message =
+      error instanceof ApiError || error instanceof Error ? error.message : String(error);
     // Error messages interpolate pointer- and server-derived strings
     // (db_path, API error bodies) — the same smuggling surface as a title.
     console.error(`error: ${terminalSafe(message)}`);

@@ -9,7 +9,10 @@ import { configFilePath } from './configFile.js';
 const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 function capture() {
@@ -71,7 +74,12 @@ describe('runKey', () => {
     const stderr = capture();
 
     await expect(
-      runKey({ readHidden: async () => 'jn_live_not_a_real_key', stdout, stderr, env: process.env }),
+      runKey({
+        readHidden: async () => 'jn_live_not_a_real_key',
+        stdout,
+        stderr,
+        env: process.env,
+      }),
     ).rejects.toThrow(/does not look like/);
 
     expect(fetchMock).not.toHaveBeenCalled();
@@ -85,9 +93,9 @@ describe('runKey', () => {
     const stdout = capture();
     const stderr = capture();
 
-    await expect(runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env: process.env })).rejects.toThrow(
-      /revoked/,
-    );
+    await expect(
+      runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env: process.env }),
+    ).rejects.toThrow(/revoked/);
 
     expect(existsSync(configFilePath(dir))).toBe(false);
     const combined = stdout.all() + stderr.all();
@@ -202,7 +210,10 @@ describe('runKey', () => {
     const { runKey } = await import('./cli.js');
     const stdout = capture();
     const stderr = capture();
-    const input = new EventEmitter() as EventEmitter & { setRawMode: ReturnType<typeof vi.fn>; isTTY: boolean };
+    const input = new EventEmitter() as EventEmitter & {
+      setRawMode: ReturnType<typeof vi.fn>;
+      isTTY: boolean;
+    };
     input.setRawMode = vi.fn();
     input.isTTY = false;
 
@@ -224,11 +235,38 @@ describe('copy', () => {
     expect(HELP).toContain('--api-url');
   });
 
+  // README tells users a feature needs "0.4.3 or newer"; without this case
+  // `jotnow --version` exited 1 with `unknown command`, so there was no way to
+  // answer that question from the installed CLI.
+  it.each(['--version', '-v', 'version'])('%s prints the running version', async (command) => {
+    const { main, VERSION } = await import('./cli.js');
+    const logs: string[] = [];
+    const log = vi.spyOn(console, 'log').mockImplementation((line: string) => {
+      logs.push(line);
+    });
+    process.exitCode = undefined;
+    try {
+      await main([command]);
+    } finally {
+      log.mockRestore();
+    }
+    expect(logs).toEqual([VERSION]);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('HELP lists the version and help commands it accepts', async () => {
+    const { HELP } = await import('./cli.js');
+    expect(HELP).toContain('jotnow help');
+    expect(HELP).toContain('jotnow --version');
+  });
+
   it('runInit output includes the `jotnow key` tip and Codex command', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
-    const logSpy = vi.spyOn(console, 'log').mockImplementation((...args) => void logs.push(args.join(' ')));
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args) => void logs.push(args.join(' ')));
     const { main } = await import('./cli.js');
     try {
       await main(['init', '--key', GOOD_KEY]);
