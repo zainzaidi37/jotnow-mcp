@@ -5,6 +5,12 @@
 // Everything here mirrors `apps/desktop/src-tauri/src/library.rs` — the
 // canonical migrations from the vendored core, a `_sqlx_migrations` history,
 // and the one `meta` key that is ever minted — plus PR A's pointer file.
+//
+// The pointer this writes is a *convenience*, not the contract: it exists so a
+// test can vary one field. The contract is the app's own bytes, committed at
+// `packages/core/fixtures/local-pointer/v1.json` and read through `readPointer`
+// in `pointer.test.ts`. A suite that only ever read what this file wrote is
+// exactly how the Rust writer and this reader went a year without meeting.
 
 import { fork, type ChildProcess } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -15,9 +21,11 @@ import { SQLITE_MIGRATIONS } from '../core/index.js';
 import { pointerPath } from './pointer.js';
 import type { SqliteDatabaseConstructor } from './runtime.js';
 
-export const DatabaseSync = (createRequire(import.meta.url)('node:sqlite') as {
-  DatabaseSync: SqliteDatabaseConstructor;
-}).DatabaseSync;
+export const DatabaseSync = (
+  createRequire(import.meta.url)('node:sqlite') as {
+    DatabaseSync: SqliteDatabaseConstructor;
+  }
+).DatabaseSync;
 
 export const FIXTURE_WORKSPACE = '11111111-1111-4111-8111-111111111111';
 
@@ -48,7 +56,10 @@ export interface LibraryFixture {
   readonly schemaVersion: number;
 }
 
-export function makeLibraryFixture(dir: string, options: LibraryFixtureOptions = {}): LibraryFixture {
+export function makeLibraryFixture(
+  dir: string,
+  options: LibraryFixtureOptions = {},
+): LibraryFixture {
   const workspaceId = options.workspaceId ?? FIXTURE_WORKSPACE;
   const schemaVersion = options.schemaVersion ?? LATEST_SCHEMA_VERSION;
   const dbPath = join(dir, 'local', 'library.db');
@@ -109,8 +120,12 @@ export interface HoldLockedOptions {
  * the code under test sleeps inside SQLite's busy handler, so nothing on the
  * test's own event loop could release a lock while it waits.
  */
-export async function holdLocked(dbPath: string, options: HoldLockedOptions = {}): Promise<ChildProcess> {
-  const releaseAfter = options.releaseAfterMs === undefined ? 'never' : String(options.releaseAfterMs);
+export async function holdLocked(
+  dbPath: string,
+  options: HoldLockedOptions = {},
+): Promise<ChildProcess> {
+  const releaseAfter =
+    options.releaseAfterMs === undefined ? 'never' : String(options.releaseAfterMs);
   const holder = fork(LOCK_HOLDER, [dbPath, releaseAfter, options.mode ?? 'exclusive'], {
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });

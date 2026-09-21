@@ -17,6 +17,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { z } from 'zod';
 import { LocalModeError } from './runtime.js';
 
 /** Sits beside `config.json` under the root `configDir()` resolves (§5.1). */
@@ -33,13 +34,32 @@ export const POINTER_VERSION = 1;
 /**
  * The four keys, `snake_case` — deliberately, since they are the handshake's
  * comparison keys spelled the way the database spells them (pointer.rs).
+ *
+ * The app's own bytes are committed at
+ * `packages/core/fixtures/local-pointer/v1.json` and read back through this
+ * module in `pointer.test.ts`, which is what ties this declaration to the Rust
+ * writer it mirrors. The webview states the same shape a third time
+ * (`apps/web/src/desktop/local-pointer.ts`) and parses the same fixture.
+ *
+ * Zod rather than a hand-rolled chain of `typeof` clauses: this package already
+ * depends on it, and the two `.min(1)` bounds below are the part a reader has to
+ * *notice*. It is deliberately **not** identical to the webview's schema, which
+ * uses `.int()` and no minimum — that side is parsing a value it just received
+ * from the process that wrote it, while this side is parsing a file of unknown
+ * age, and the refusal messages here are contract (`library.test.ts`).
+ *
+ * Non-strict on purpose: a fifth key added by a future app must not break every
+ * CLI already installed. `version` is what covers a change a reader cannot
+ * survive, and it is checked separately below so its message stays its own.
  */
-export interface LocalLibraryPointer {
-  readonly version: number;
-  readonly db_path: string;
-  readonly workspace_uuid: string;
-  readonly schema_version: number;
-}
+const pointerSchema = z.object({
+  version: z.number(),
+  db_path: z.string().min(1),
+  workspace_uuid: z.string().min(1),
+  schema_version: z.number(),
+});
+
+export type LocalLibraryPointer = Readonly<z.infer<typeof pointerSchema>>;
 
 export function pointerPath(dir: string): string {
   return join(dir, POINTER_FILE);
@@ -76,35 +96,24 @@ export function readPointer(dir: string): LocalLibraryPointer {
     );
   }
 
-  const record = parsed as Partial<Record<keyof LocalLibraryPointer, unknown>>;
-  if (
-    typeof parsed !== 'object' ||
-    parsed === null ||
-    typeof record.version !== 'number' ||
-    typeof record.db_path !== 'string' ||
-    record.db_path === '' ||
-    typeof record.workspace_uuid !== 'string' ||
-    record.workspace_uuid === '' ||
-    typeof record.schema_version !== 'number'
-  ) {
+  const record = pointerSchema.safeParse(parsed);
+  if (!record.success) {
     throw new LocalModeError(
       `${file} has an unexpected shape. Launch the jotnow desktop app to rewrite it; ` +
         `nothing was written.`,
     );
   }
 
-  if (record.version > POINTER_VERSION) {
+  // Its own check, after the shape and outside the schema: a pointer from a
+  // newer app is well-formed, and telling the user to update the CLI is a
+  // different instruction from telling them to relaunch the app.
+  if (record.data.version > POINTER_VERSION) {
     throw new LocalModeError(
       `${file} was written by a newer jotnow desktop app (pointer version ` +
-        `${record.version}; this CLI understands ${POINTER_VERSION}). ` +
+        `${record.data.version}; this CLI understands ${POINTER_VERSION}). ` +
         `Update the CLI: npm i -g jotnow.`,
     );
   }
 
-  return {
-    version: record.version,
-    db_path: record.db_path,
-    workspace_uuid: record.workspace_uuid,
-    schema_version: record.schema_version,
-  };
+  return record.data;
 }
