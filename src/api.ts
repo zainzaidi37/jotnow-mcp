@@ -1,3 +1,5 @@
+import type { z } from 'zod';
+import { wireSchemas } from './wire.js';
 import type { Config } from './config.js';
 import { normalizeTags } from './tagging.js';
 
@@ -78,7 +80,7 @@ export class NotesApi {
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
     const tags = input.tags ? normalizeTags(input.tags, input.vocabulary) : [];
-    const response = await this.call('save_note', {
+    const response = await this.call('save_note', wireSchemas.save_note, {
       id: crypto.randomUUID(),
       title: input.title,
       body: input.body,
@@ -88,37 +90,33 @@ export class NotesApi {
       folder: input.folder,
       source: input.source ?? 'mcp',
     });
-    const result = response as {
-      note: { id: string; title: string; created_at: string };
-      existing_tags?: unknown;
-    };
-    const existingTags = Array.isArray(result.existing_tags) &&
-        result.existing_tags.every((tag) => typeof tag === 'string')
-      ? result.existing_tags
-      : undefined;
-    return { ...result.note, tags, existingTags };
+    return { ...response.note, tags, existingTags: response.existing_tags };
   }
 
   async listRecentNotes(limit = 10): Promise<SearchHit[]> {
-    const result = await this.call('list_recent_notes', { limit });
-    return (result as { notes: SearchHit[] }).notes;
+    const result = await this.call('list_recent_notes', wireSchemas.list_recent_notes, { limit });
+    return result.notes;
   }
 
   async searchNotes(query: string): Promise<SearchResult> {
-    return (await this.call('search_notes', { query })) as SearchResult;
+    return await this.call('search_notes', wireSchemas.search_notes, { query });
   }
 
   async recallNotes(query: string): Promise<RecallMatch[]> {
-    const result = await this.call('recall', { query });
-    return (result as { matches: RecallMatch[] }).matches;
+    const result = await this.call('recall', wireSchemas.recall, { query });
+    return result.matches;
   }
 
   async getNote(id: string): Promise<FullNote> {
-    const result = await this.call('get_note', { id });
-    return (result as { note: FullNote }).note;
+    const result = await this.call('get_note', wireSchemas.get_note, { id });
+    return result.note;
   }
 
-  private async call(action: string, params: Record<string, unknown>): Promise<unknown> {
+  private async call<T>(
+    action: string,
+    schema: z.ZodType<T, z.ZodTypeDef, unknown>,
+    params: Record<string, unknown>,
+  ): Promise<T> {
     let response: Response;
     try {
       response = await this.fetchImpl(this.config.apiUrl, {
@@ -136,13 +134,25 @@ export class NotesApi {
     const body = (await response.json().catch(() => null)) as { error?: string } | null;
     if (!response.ok) {
       if (response.status === 401) {
-        throw new ApiError(401, 'API key was rejected — it may have been revoked. Create a new one in Settings → API keys.');
+        throw new ApiError(
+          401,
+          'API key was rejected — it may have been revoked. Create a new one in Settings → API keys.',
+        );
       }
       if (response.status === 429) {
         throw new ApiError(429, 'rate limit hit (60 writes/min per key); wait a minute and retry.');
       }
       throw new ApiError(response.status, body?.error ?? `request failed with ${response.status}`);
     }
-    return body;
+    const invalidReply = (detail: string) =>
+      new ApiError(
+        response.status,
+        `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g jotnow) or, on a self-hosted deployment, update the backend.`,
+      );
+    if (body === null) throw invalidReply('no JSON response this version of jotnow understands');
+    const parsed = schema.safeParse(body);
+    if (!parsed.success)
+      throw invalidReply('a response this version of jotnow does not understand');
+    return parsed.data;
   }
 }

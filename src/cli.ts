@@ -594,7 +594,18 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       return;
     }
 
-    const { positional, flags } = parseFlags(rest);
+    // Capture plugins put the title first, and user text may begin with --.
+    // A following non-flag value still forms a flag/value pair, so flag-first
+    // typos are rejected rather than mistaken for titles; so is a lone
+    // flag-shaped token (`add --foldr`), which reads as a valueless flag, not
+    // a one-word title.
+    const titleFirst =
+      command === 'add' &&
+      rest[0]?.startsWith('--') &&
+      (rest.length === 1 ? !/^--[^\s=]+$/.test(rest[0]) : rest[1]!.startsWith('--')) &&
+      !['--body', '--tags', '--folder'].includes(rest[0]);
+    const { positional, flags } = parseFlags(titleFirst ? rest.slice(1) : rest);
+    if (titleFirst) positional.unshift(rest[0]!);
     switch (command) {
       case 'init':
         await runInit(flags, process.env);
@@ -612,10 +623,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         runWhere(process.env);
         return;
       case 'add': {
+        rejectUnknownFlags(flags, ['body', 'tags', 'folder']);
         const title = positional[0];
         if (!title)
           throw new Error(
-            'usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]',
+            'usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>] (body is read from stdin when piped)',
           );
         const body = flags.get('body') ?? (process.stdin.isTTY ? '' : await readStdin());
         const api = resolveBackend(process.env).backend;
