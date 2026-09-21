@@ -59,6 +59,19 @@ describe('resolveConfig', () => {
     }
   });
 
+  it('the CLI copy of the key pattern is byte-identical to core\'s', async () => {
+    // `config.ts` hand-writes the pattern instead of re-exporting the vendored
+    // copy: nothing on the account-mode CLI path loads `core/index.js` today,
+    // and a re-export would pull the whole vendored core plus zod into every
+    // MCP server start. A test is the cheaper binding — and it is needed,
+    // because the vendoring drift gate (`packages/core/src/mcp-vendor.test.ts`)
+    // watches `src/core/index.ts` only, so a fix made in core would go green
+    // while the copy the CLI actually uses stayed stale.
+    const vendored = (await import('./core/index.js')) as { API_KEY_PATTERN: RegExp };
+    expect(API_KEY_PATTERN.source).toBe(vendored.API_KEY_PATTERN.source);
+    expect(API_KEY_PATTERN.flags).toBe(vendored.API_KEY_PATTERN.flags);
+  });
+
   it('key pattern matches exactly jn_live_ + 43 alphanumerics', () => {
     expect(API_KEY_PATTERN.test(GOOD_KEY)).toBe(true);
     expect(API_KEY_PATTERN.test(`${GOOD_KEY}x`)).toBe(false);

@@ -209,10 +209,19 @@ export type ApiKey = z.infer<typeof ApiKeySchema>;
 export const ApiKeyPublicSchema = ApiKeySchema.omit({ key_hash: true });
 export type ApiKeyPublic = z.infer<typeof ApiKeyPublicSchema>;
 
-// API key format, shared by the web app (generation), the Edge Function
-// (validation), and jotnow (client-side validation). A key is
-// "jn_live_" + 43 base62 characters (~256 bits); the stored prefix is the
-// first 16 characters, enough to recognize a key without revealing it.
+// API key format. A key is "jn_live_" + 43 base62 characters (~256 bits); the
+// stored prefix is the first 16 characters, enough to recognize a key without
+// revealing it.
+//
+// THIS declaration is the source. The web app (generation) imports it, but the
+// other two runtimes cannot and hold hand-written copies instead: the Edge
+// Function's `KEY_PATTERN` (supabase/functions/mcp-api/index.ts — the
+// Deno/npm boundary) and the CLI's (packages/mcp/src/config.ts — loading the
+// vendored core would drag zod into every MCP server start). Both copies are
+// pinned back to this one by `.source` equality:
+// supabase/tests/core-mirror.unit.test.ts and packages/mcp/src/index.test.ts.
+// The comment here used to claim the constant was simply "shared", which it
+// has never been.
 export const API_KEY_PATTERN = /^jn_live_[A-Za-z0-9]{43}$/;
 export const API_KEY_PREFIX_LENGTH = 16;
 
