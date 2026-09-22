@@ -1233,11 +1233,35 @@ export const ATTACHMENT_MAX_OBJECT_BYTES = 25 * 1024 * 1024;
 export const ATTACHMENT_TOTAL_BYTES_LIMIT = 1024 * 1024 * 1024;
 export const ATTACHMENT_OBJECT_COUNT_LIMIT = 2000;
 
+/**
+ * The **hosted** byte ceiling, which is deliberately a different number from
+ * the one above rather than a raise of it.
+ *
+ * `ATTACHMENT_TOTAL_BYTES_LIMIT` is the Supabase-backend ceiling: advisory on
+ * a BYO project (D9), in the operator's own bucket and on their own bill, and
+ * pinned to the SQL contract by `attachments-contract.unit.test.ts`. Hosted's
+ * bytes are in R2 instead, where `attachment-grant` is the only source of an
+ * upload URL and the ceiling is therefore real and ours to set. Zain set it at
+ * 2 GiB (`plans/image-management-2026-09-22.md` §1).
+ *
+ * Raising the shared constant instead would also raise what a BYO operator's
+ * client advertises and pre-checks against, in a project this repository does
+ * not pay for and whose `attachment_usage()` was never told.
+ *
+ * The **object** ceiling is not duplicated: it is 2,000 on both backends, and
+ * the migration's scan bound (`limit 2001`) is written against that one number.
+ */
+export const ATTACHMENT_HOSTED_TOTAL_BYTES_LIMIT = 2 * 1024 * 1024 * 1024;
+
 /** `public.attachment_usage()`'s payload. */
 export const AttachmentUsageSchema = z.object({
   total_bytes: z.number().int().nonnegative(),
   object_count: z.number().int().nonnegative(),
   truncated: z.boolean(),
+  // Hosted reports its enforced ceilings; optional because BYO's
+  // public.attachment_usage() still returns only the three fields above.
+  total_bytes_limit: z.number().int().positive().optional(),
+  object_count_limit: z.number().int().positive().optional(),
 });
 export type AttachmentUsage = z.infer<typeof AttachmentUsageSchema>;
 
