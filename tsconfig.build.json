@@ -2,9 +2,18 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "noEmit": false,
+    // The emitted layout is a contract: `bin` points at dist/main.js and
+    // `build` chmods exactly that path. TypeScript 6.0 stops inferring the
+    // root directory (TS5011), and the tempting "." still compiles — it just
+    // emits dist/src/main.js and breaks both. Mirrors
+    // packages/mcp/tsconfig.build.json in the jotnow-dev monorepo.
+    "rootDir": "src",
     "outDir": "dist",
     "sourceMap": false,
-    "declaration": false
+    "declaration": false,
+    // Inherited from tsconfig.json, restated because this program is the one
+    // that publishes: see the note there.
+    "types": ["node"]
   },
   "exclude": ["src/**/*.test.ts"]
 }

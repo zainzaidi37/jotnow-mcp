@@ -12,7 +12,13 @@
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "noUncheckedIndexedAccess": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+    // TypeScript 6.0 stops auto-discovering every @types/* package
+    // reachable by walking up node_modules/@types and defaults `types`
+    // to []. This package is Node code throughout, so name the library
+    // rather than inherit it. Mirrors packages/mcp/tsconfig.json in the
+    // jotnow-dev monorepo, which owns src/ and package.json here.
+    "types": ["node"]
   },
   "include": ["src"]
 }
