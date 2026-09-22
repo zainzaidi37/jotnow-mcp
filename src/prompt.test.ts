@@ -1,17 +1,17 @@
 import { EventEmitter } from 'node:events';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, type Mock } from 'vitest';
 import { readHiddenLine } from './prompt.js';
 
 // input only needs .on/.removeListener (EventEmitter gives us both) plus an
 // injected setRawMode spy — readHiddenLine must not depend on anything else
 // from a real TTY, which is exactly what makes it testable without a pty.
-function fakeInput(): EventEmitter & { setRawMode: ReturnType<typeof vi.fn> } {
-  const input = new EventEmitter() as EventEmitter & { setRawMode: ReturnType<typeof vi.fn> };
+function fakeInput(): EventEmitter & { setRawMode: Mock<(mode: boolean) => void> } {
+  const input = new EventEmitter() as EventEmitter & { setRawMode: Mock<(mode: boolean) => void> };
   input.setRawMode = vi.fn();
   return input;
 }
 
-function fakeOutput(): { write: ReturnType<typeof vi.fn>; all: () => string } {
+function fakeOutput(): { write: Mock<(chunk: string) => unknown>; all: () => string } {
   const writes: string[] = [];
   const write = vi.fn((chunk: string) => {
     writes.push(chunk);

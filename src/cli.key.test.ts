@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { DEFAULT_API_URL } from './config.js';
 import { configFilePath } from './configFile.js';
 
@@ -211,7 +211,7 @@ describe('runKey', () => {
     const stdout = capture();
     const stderr = capture();
     const input = new EventEmitter() as EventEmitter & {
-      setRawMode: ReturnType<typeof vi.fn>;
+      setRawMode: Mock<(mode: boolean) => void>;
       isTTY: boolean;
     };
     input.setRawMode = vi.fn();

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { configFilePath } from './configFile.js';
 import { runInitSelfHost, runWhere, selfHostApiUrl } from './cli.js';
 
@@ -79,7 +79,10 @@ describe('runInitSelfHost', () => {
   });
 
   it('accepts project and key in one ended piped chunk without losing the second line', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response()),
+    );
     const input = new EventEmitter();
     const done = runInitSelfHost({
       env: { JOTNOW_CONFIG_DIR: dir },
@@ -95,7 +98,10 @@ describe('runInitSelfHost', () => {
   });
 
   it('accepts ended piped input without a final newline', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response()),
+    );
     const input = new EventEmitter();
     const done = runInitSelfHost({
       env: { JOTNOW_CONFIG_DIR: dir },
@@ -130,12 +136,15 @@ describe('runInitSelfHost', () => {
   });
 
   it('handles a two-line TTY paste without echoing the key and pauses the stream on completion', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response()),
+    );
     const projectUrl = 'http://127.0.0.1:54321/functions/v1/mcp-api?mode=test';
     const input = new EventEmitter() as EventEmitter & {
-      setRawMode: ReturnType<typeof vi.fn>;
-      pause: ReturnType<typeof vi.fn>;
-      resume: ReturnType<typeof vi.fn>;
+      setRawMode: Mock<(mode: boolean) => void>;
+      pause: Mock<() => unknown>;
+      resume: Mock<() => unknown>;
     };
     input.setRawMode = vi.fn();
     input.pause = vi.fn();
@@ -167,7 +176,10 @@ describe('runInitSelfHost', () => {
     const apiUrl = 'https://chosen.example/functions/v1/mcp-api';
     await runInitSelfHost({
       env: { JOTNOW_CONFIG_DIR: dir },
-      flags: new Map([['api-url', apiUrl], ['key', GOOD_KEY]]),
+      flags: new Map([
+        ['api-url', apiUrl],
+        ['key', GOOD_KEY],
+      ]),
       readProject,
       stdout: capture(),
     });
@@ -207,7 +219,10 @@ describe('runInitSelfHost', () => {
   });
 
   it('does not persist the key or endpoint when validation fails', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"error":"invalid"}', { status: 401 })));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('{"error":"invalid"}', { status: 401 })),
+    );
     await expect(
       runInitSelfHost({
         env: { JOTNOW_CONFIG_DIR: dir },
@@ -220,11 +235,17 @@ describe('runInitSelfHost', () => {
   });
 
   it('where reports the endpoint paired with the stored key', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => response()));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response()),
+    );
     const apiUrl = 'https://project.example/functions/v1/mcp-api';
     await runInitSelfHost({
       env: { JOTNOW_CONFIG_DIR: dir },
-      flags: new Map([['api-url', apiUrl], ['key', GOOD_KEY]]),
+      flags: new Map([
+        ['api-url', apiUrl],
+        ['key', GOOD_KEY],
+      ]),
       stdout: capture(),
     });
     const lines: string[] = [];
