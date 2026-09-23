@@ -1,4 +1,5 @@
 # Jotnow
+
 Tell your agent to "jot that down" and it's saved to your account at [jotnow.dev](https://jotnow.dev): tagged, searchable, exportable. Works with Claude Code, Codex, and any other MCP client, plus a terminal CLI.
 
 Free to sign in, and use. Export all your notes in markdown anytime, no vendor-lockin.
@@ -64,7 +65,6 @@ Hosted key files remain version 1. Update an older global installation with
 
 ## MCP configuration
 
-
 ### Claude Code
 
 For Claude Code or similar clients that use a JSON MCP configuration, once a key is stored via `jotnow key`, no `env` block is needed:
@@ -115,10 +115,10 @@ args = ["-y", "jotnow"]
 The server provides these tools:
 
 - `jot`: save a note
-- `find_jots`: search notes by keyword
-- `recall_jots`: search notes by meaning (account mode, Pro). Browser Recall with your own model key does not unlock this MCP tool.
-- `get_jot`: read one note by ID or short ID prefix
-- `list_recent_jots`: list recently updated notes
+- `find_jots`: search notes by keyword; listings lead with a label such as `A10`, or an 8-character ID prefix when no label is available
+- `recall_jots`: search notes by meaning; listings use the same label or prefix (account mode, Pro). Browser Recall with your own model key does not unlock this MCP tool.
+- `get_jot`: read one note by label, an ID prefix of at least 8 characters, or full UUID
+- `list_recent_jots`: list recently updated notes, each led by its label or 8-character ID prefix
 
 ## CLI
 
@@ -135,7 +135,7 @@ Then run commands directly:
 jotnow add "Useful fix" --body "Restart the worker after changing its environment."
 jotnow search "worker environment"
 jotnow recall "why deployments use stale configuration"
-jotnow get <id>
+jotnow get A10        # a label, an 8-character id prefix, or a full UUID
 jotnow recent 10
 ```
 
@@ -159,12 +159,11 @@ API key are set up and no mode has been chosen, `jotnow` refuses with a hard
 error rather than guessing where your jots belong — run `jotnow use` once to
 choose (or set `JOTNOW_MODE` per command).
 
-
 ## Environment variables
 
 - `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk.
 - `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting. With a stored key, the saved endpoint is used when this override is absent. An explicit `JOTNOW_API_KEY` uses this override or the hosted default; it never inherits an unrelated stored endpoint.
-- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app reads the same variable from *its own* environment, and an app launched from the Start menu or a shortcut does not inherit a variable you export in a shell — so setting it here usually points the CLI at a directory with no local-library pointer in it, and local mode won't be detected.
+- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app reads the same variable from _its own_ environment, and an app launched from the Start menu or a shortcut does not inherit a variable you export in a shell — so setting it here usually points the CLI at a directory with no local-library pointer in it, and local mode won't be detected.
 - `JOTNOW_MODE`: `local` or `account` for a single command; overrides the choice stored by `jotnow use`
 
 `jotnow key` stores the key in `~/.jotnow/config.json` (or `$JOTNOW_CONFIG_DIR/config.json`), created with permissions that only your user can read.

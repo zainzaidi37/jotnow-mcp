@@ -2,6 +2,7 @@ import type { z } from 'zod';
 import { wireSchemas } from './wire.js';
 import type { Config } from './config.js';
 import { normalizeTags } from './tagging.js';
+import { parseNoteLabel } from './core/note-label.js';
 
 // Thin client for the mcp-api Edge Function. Note ids are generated here —
 // UUIDs are client-generated throughout jotnow.
@@ -11,6 +12,7 @@ import { normalizeTags } from './tagging.js';
 // getNote.
 export interface SearchHit {
   id: string;
+  short_id?: number | null;
   title: string;
   tags: string[];
   updated_at: string;
@@ -27,6 +29,7 @@ export interface SearchResult {
 
 export interface FullNote {
   id: string;
+  short_id?: number | null;
   title: string;
   body: string;
   folder_id: string | null;
@@ -40,6 +43,7 @@ export interface FullNote {
 // gist written at embed time and the cosine similarity for calibration.
 export interface RecallMatch {
   id: string;
+  short_id?: number | null;
   title: string;
   gist: string | null;
   similarity: number;
@@ -107,9 +111,24 @@ export class NotesApi {
     return result.matches;
   }
 
-  async getNote(id: string): Promise<FullNote> {
-    const result = await this.call('get_note', wireSchemas.get_note, { id });
-    return result.note;
+  async getNote(input: string): Promise<FullNote> {
+    const shortId = parseNoteLabel(input.trim());
+    try {
+      const result = await this.call(
+        'get_note',
+        wireSchemas.get_note,
+        shortId === null ? { id: input } : { short_id: shortId },
+      );
+      return result.note;
+    } catch (error) {
+      if (shortId !== null && error instanceof ApiError && error.status === 400) {
+        throw new ApiError(
+          400,
+          'This Jotnow backend does not support short ids yet; use the 8-character id prefix instead.',
+        );
+      }
+      throw error;
+    }
   }
 
   private async call<T>(

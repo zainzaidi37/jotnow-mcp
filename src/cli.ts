@@ -20,6 +20,7 @@ import { pointerExists, pointerPath } from './local/pointer.js';
 import { resolveMode } from './mode.js';
 import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { serveStdio } from './server.js';
+import { noteHandle } from './handle.js';
 
 /**
  * The running version, read from package.json rather than restated here, so the
@@ -43,7 +44,7 @@ Usage:
                                  (body is read from stdin when piped)
   jotnow search <query>
   jotnow recall <query>          semantic search by meaning (Pro plan)
-  jotnow get <id>
+  jotnow get <label|id-prefix|uuid>
   jotnow recent [n]
   jotnow                         run the MCP server on stdio (for MCP configs)
   jotnow init --key jn_live_... [--api-url <url>]
@@ -154,7 +155,7 @@ export function terminalSafe(text: string): string {
 function printHit(hit: SearchHit): void {
   const tags = hit.tags.map(terminalSafe).join(', ') || 'none';
   console.log(
-    `${hit.updated_at.slice(0, 10)}  ${terminalSafe(hit.title) || '(untitled)'}  [${tags}]  (${hit.id})`,
+    `${noteHandle(hit)}  ${hit.updated_at.slice(0, 10)}  ${terminalSafe(hit.title) || '(untitled)'}  [${tags}]  (${hit.id})`,
   );
 }
 
@@ -167,15 +168,14 @@ function printSearch({ notes, total }: SearchResult, query: string): void {
   if (total > notes.length) {
     console.log(`Showing ${notes.length} of ${total} matches — refine the query for others.`);
   }
-  console.log(`Read one with: jotnow get <id>`);
+  console.log(`Read one with: jotnow get <label|id-prefix|uuid>`);
 }
 
-// Recall candidates lead with the cosine similarity so the reader can gauge how
-// close a match is; title/gist are untrusted (agent-written) so both go through
-// terminalSafe, same as printHit.
+// Recall candidates lead with the same handle as other listings and keep the
+// full UUID. Title/gist are untrusted and go through terminalSafe.
 export function formatRecallHit(match: RecallMatch): string {
   const gist = match.gist ? ` — ${terminalSafe(match.gist)}` : '';
-  return `[${match.similarity.toFixed(2)}]  ${terminalSafe(match.title) || '(untitled)'}  (${match.id})${gist}`;
+  return `${noteHandle(match)}  [${match.similarity.toFixed(2)}]  ${terminalSafe(match.title) || '(untitled)'}  (${match.id})${gist}`;
 }
 
 function printRecall(matches: RecallMatch[], query: string): void {
@@ -184,7 +184,7 @@ function printRecall(matches: RecallMatch[], query: string): void {
     return;
   }
   matches.forEach((match) => console.log(formatRecallHit(match)));
-  console.log(`Read one with: jotnow get <id>`);
+  console.log(`Read one with: jotnow get <label|id-prefix|uuid>`);
 }
 
 async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Promise<void> {
@@ -664,11 +664,11 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       }
       case 'get': {
         const id = positional[0];
-        if (!id) throw new Error('usage: jotnow get <id>');
+        if (!id) throw new Error('usage: jotnow get <label|id-prefix|uuid>');
         const note = await resolveBackend(process.env).backend.getNote(id);
         const tags = note.tags.map(terminalSafe).join(', ') || 'none';
         console.log(
-          `${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`,
+          `${noteHandle(note)}  ${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`,
         );
         console.log('');
         console.log(terminalSafe(note.body));

@@ -4,6 +4,7 @@ import { z } from 'zod';
 // ids/timestamps/source are strings and additive server fields are tolerated.
 const searchHit = z.object({
   id: z.string(),
+  short_id: z.number().int().nullable().optional(),
   title: z.string(),
   tags: z.array(z.string()),
   updated_at: z.string(),
@@ -23,6 +24,7 @@ export const wireSchemas = {
     matches: z.array(
       z.object({
         id: z.string(),
+        short_id: z.number().int().nullable().optional(),
         title: z.string(),
         gist: z.string().nullable(),
         similarity: z.number(),
@@ -32,6 +34,7 @@ export const wireSchemas = {
   get_note: z.object({
     note: z.object({
       id: z.string(),
+      short_id: z.number().int().nullable().optional(),
       title: z.string(),
       body: z.string(),
       folder_id: z.string().nullable(),
