@@ -66,6 +66,31 @@ export interface SavedNote {
   existingTags?: string[];
 }
 
+export interface EditNoteInput {
+  id: string;
+  old_string?: string;
+  new_string?: string;
+  title?: string;
+  add_tags?: string[];
+  remove_tags?: string[];
+  folder?: string;
+  source?: 'mcp' | 'cli';
+  vocabulary?: string[];
+}
+
+export interface AppendNoteInput {
+  id: string;
+  text: string;
+  source?: 'mcp' | 'cli';
+}
+
+export interface EditedNote {
+  id: string;
+  short_id?: number | null;
+  title: string;
+  updated_at: string;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -129,6 +154,63 @@ export class NotesApi {
       }
       throw error;
     }
+  }
+
+  async editNote(input: EditNoteInput): Promise<EditedNote> {
+    const shortId = parseNoteLabel(input.id.trim());
+    const reference = shortId === null ? { id: input.id } : { short_id: shortId };
+    try {
+      const result = await this.call('edit_note', wireSchemas.edit_note, {
+        ...reference,
+        old_string: input.old_string,
+        new_string: input.new_string,
+        title: input.title,
+        add_tags: input.add_tags ? normalizeTags(input.add_tags, input.vocabulary) : undefined,
+        remove_tags: input.remove_tags?.map((tag) => tag.trim().replace(/^#+/, '').toLowerCase()),
+        folder: input.folder,
+        source: input.source ?? 'mcp',
+      });
+      return result.note;
+    } catch (error) {
+      throw this.agentEditError(error);
+    }
+  }
+
+  async appendNote(input: AppendNoteInput): Promise<EditedNote> {
+    const shortId = parseNoteLabel(input.id.trim());
+    try {
+      const result = await this.call('append_note', wireSchemas.append_note, {
+        ...(shortId === null ? { id: input.id } : { short_id: shortId }),
+        text: input.text,
+        source: input.source ?? 'mcp',
+      });
+      return result.note;
+    } catch (error) {
+      throw this.agentEditError(error);
+    }
+  }
+
+  private agentEditError(error: unknown): unknown {
+    if (!(error instanceof ApiError)) return error;
+    if (error.status === 400 && error.message === 'unknown action') {
+      return new ApiError(
+        400,
+        'This Jotnow backend does not support agent edits yet; update the deployment.',
+      );
+    }
+    if (error.status === 409 && error.message.includes('old_string must match exactly')) {
+      return new ApiError(
+        409,
+        'Re-read the note with get_jot and choose an anchor that matches exactly, including whitespace and line endings, and occurs exactly once.',
+      );
+    }
+    if (error.status === 409 && error.message.includes('old_string occurs more than once')) {
+      return new ApiError(
+        409,
+        'Re-read the note with get_jot and choose a longer anchor that occurs exactly once.',
+      );
+    }
+    return error;
   }
 
   private async call<T>(

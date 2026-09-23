@@ -118,6 +118,8 @@ The server provides these tools:
 - `find_jots`: search notes by keyword; listings lead with a label such as `A10`, or an 8-character ID prefix when no label is available
 - `recall_jots`: search notes by meaning; listings use the same label or prefix (account mode, Pro). Browser Recall with your own model key does not unlock this MCP tool.
 - `get_jot`: read one note by label, an ID prefix of at least 8 characters, or full UUID
+- `edit_jot`: change a named jot with an exact, unique text anchor or update its metadata
+- `append_to_jot`: append a paragraph to a named jot
 - `list_recent_jots`: list recently updated notes, each led by its label or 8-character ID prefix
 
 ## CLI
@@ -136,6 +138,7 @@ jotnow add "Useful fix" --body "Restart the worker after changing its environmen
 jotnow search "worker environment"
 jotnow recall "why deployments use stale configuration"
 jotnow get A10        # a label, an 8-character id prefix, or a full UUID
+jotnow append A10 --text "An update to this jot."
 jotnow recent 10
 ```
 

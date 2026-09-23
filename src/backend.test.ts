@@ -15,18 +15,24 @@ import type { SqliteDatabaseConstructor } from './local/runtime.js';
  * the MCP tools, through one resolver (§5.4).
  */
 
-const DatabaseSync = (createRequire(import.meta.url)('node:sqlite') as {
-  DatabaseSync: SqliteDatabaseConstructor;
-}).DatabaseSync;
+const DatabaseSync = (
+  createRequire(import.meta.url)('node:sqlite') as {
+    DatabaseSync: SqliteDatabaseConstructor;
+  }
+).DatabaseSync;
 
 const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 type RegisteredTool = {
-  handler: (args: unknown, extra: unknown) => Promise<{ isError?: boolean; content: { text: string }[] }>;
+  handler: (
+    args: unknown,
+    extra: unknown,
+  ) => Promise<{ isError?: boolean; content: { text: string }[] }>;
 };
 
 function registeredTools(server: ReturnType<typeof buildServer>): Record<string, RegisteredTool> {
-  return (server as unknown as { _registeredTools: Record<string, RegisteredTool> })._registeredTools;
+  return (server as unknown as { _registeredTools: Record<string, RegisteredTool> })
+    ._registeredTools;
 }
 
 function notesIn(dbPath: string): Record<string, unknown>[] {
@@ -88,7 +94,12 @@ describe('local mode backend', () => {
       });
       const notes = notesIn(dbPath);
       expect(notes).toHaveLength(1);
-      expect(notes[0]).toMatchObject({ id: saved.id, title: 'from the CLI', user_id: FIXTURE_WORKSPACE, source: 'cli' });
+      expect(notes[0]).toMatchObject({
+        id: saved.id,
+        title: 'from the CLI',
+        user_id: FIXTURE_WORKSPACE,
+        source: 'cli',
+      });
       expect(fetchMock).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllGlobals();
@@ -96,7 +107,9 @@ describe('local mode backend', () => {
   });
 
   it('the MCP jot tool writes locally, and the read tools return the desktop-app error', async () => {
-    const tools = registeredTools(buildServer(new LocalBackend(dir), '0.0.0-test', { repoTag: null }));
+    const tools = registeredTools(
+      buildServer(new LocalBackend(dir), '0.0.0-test', { repoTag: null }),
+    );
     const jotted = await tools.jot!.handler({ title: 'agent jot', body: 'b' }, {});
     expect(jotted.isError).toBeUndefined();
     expect(notesIn(dbPath)).toHaveLength(1);
@@ -158,6 +171,31 @@ describe('local mode backend', () => {
       expect(db.prepare('SELECT "name" FROM "tags"').all()).toEqual([{ name: 'account-spelling' }]);
     } finally {
       db.close();
+    }
+  });
+
+  it('drops local tag vocabulary on the first account edit after a mode switch', async () => {
+    const editNote = vi.fn().mockResolvedValue({
+      id: 'acct-1',
+      title: 'account jot',
+      updated_at: '2026-08-06T00:00:00.000Z',
+    });
+    const fakeApi = { editNote } as unknown as NotesApi;
+    saveStoredKey(GOOD_KEY, dir);
+    saveStoredMode('local', dir);
+    const backend = serveBackend({ JOTNOW_CONFIG_DIR: dir }, () => fakeApi);
+    await backend.saveNote({ title: 'local jot', body: '' });
+    saveStoredMode('account', dir);
+    const edit = {
+      id: 'A10',
+      add_tags: ['account spelling'],
+      vocabulary: ['Local-Spelling'],
+    };
+    await backend.editNote(edit);
+    await backend.editNote(edit);
+    expect(editNote).toHaveBeenCalledTimes(2);
+    for (const [input] of editNote.mock.calls) {
+      expect(input).toEqual({ ...edit, vocabulary: undefined });
     }
   });
 });
@@ -227,7 +265,12 @@ describe('the CLI, through main()', () => {
     const evilPath = join(dir, 'gone\u001b]0;owned\u0007\u009b31m.db');
     writeFileSync(
       join(dir, 'local-library.json'),
-      JSON.stringify({ version: 1, db_path: evilPath, workspace_uuid: FIXTURE_WORKSPACE, schema_version: 2 }),
+      JSON.stringify({
+        version: 1,
+        db_path: evilPath,
+        workspace_uuid: FIXTURE_WORKSPACE,
+        schema_version: 2,
+      }),
     );
     const { main } = await import('./cli.js');
     await main(['where']);

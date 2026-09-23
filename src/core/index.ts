@@ -1102,6 +1102,14 @@ export type NoteVersion = z.infer<typeof NoteVersionSchema>;
 export const NoteVersionMetaSchema = NoteVersionSchema.omit({ body: true });
 export type NoteVersionMeta = z.infer<typeof NoteVersionMetaSchema>;
 
+// Server history alone has attribution. Local SQLite and demo history rows
+// remain typed by the schemas above and have no matching columns.
+export const NoteVersionAttributionSchema = NoteVersionMetaSchema.extend({
+  actor: z.string().nullable().default(null),
+  api_key_id: z.string().nullable().default(null),
+});
+export type NoteVersionAttribution = z.infer<typeof NoteVersionAttributionSchema>;
+
 // Join rows carry the full audit column set: the sync cursor pulls each table
 // by (user_id, updated_at), and removals are soft-deletes like everywhere else.
 export const NoteTagSchema = z.object({

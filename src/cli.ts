@@ -45,6 +45,8 @@ Usage:
   jotnow search <query>
   jotnow recall <query>          semantic search by meaning (Pro plan)
   jotnow get <label|id-prefix|uuid>
+  jotnow append <label|id-prefix|uuid> [--text <text>]
+                                 (text is read from stdin when piped)
   jotnow recent [n]
   jotnow                         run the MCP server on stdio (for MCP configs)
   jotnow init --key jn_live_... [--api-url <url>]
@@ -142,7 +144,7 @@ async function readStdin(): Promise<string> {
 }
 
 /**
- * Note titles/bodies are untrusted (often agent-written). Strip control
+ * Note titles/bodies and backend-provided handles are untrusted. Strip control
  * characters so a note can't smuggle ANSI escapes into the user's terminal
  * (cursor games, fake output, OSC sequences).
  */
@@ -647,7 +649,22 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
           folder: flags.get('folder'),
           source: 'cli',
         });
-        console.log(`Jotted "${terminalSafe(note.title)}" (id ${note.id}).`);
+        console.log(`Jotted "${terminalSafe(note.title)}" (id ${terminalSafe(note.id)}).`);
+        return;
+      }
+      case 'append': {
+        rejectUnknownFlags(flags, ['text']);
+        const id = positional[0];
+        if (!id || positional.length !== 1)
+          throw new Error('usage: jotnow append <label|id-prefix|uuid> [--text <text>]');
+        const text = flags.get('text') ?? (process.stdin.isTTY ? '' : await readStdin());
+        if (!text) throw new Error('append text must be non-empty');
+        const note = await resolveBackend(process.env).backend.appendNote({
+          id,
+          text,
+          source: 'cli',
+        });
+        console.log(`Appended to ${terminalSafe(noteHandle(note))} "${terminalSafe(note.title)}".`);
         return;
       }
       case 'search': {

@@ -31,6 +31,22 @@ export const wireSchemas = {
       }),
     ),
   }),
+  edit_note: z.object({
+    note: z.object({
+      id: z.string(),
+      short_id: z.number().int().nullable().optional(),
+      title: z.string(),
+      updated_at: z.string(),
+    }),
+  }),
+  append_note: z.object({
+    note: z.object({
+      id: z.string(),
+      short_id: z.number().int().nullable().optional(),
+      title: z.string(),
+      updated_at: z.string(),
+    }),
+  }),
   get_note: z.object({
     note: z.object({
       id: z.string(),

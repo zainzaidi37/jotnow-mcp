@@ -4,7 +4,17 @@
 // to the wrong place from inside an agent session.
 
 import { NotesApi } from './api.js';
-import type { FullNote, RecallMatch, SaveNoteInput, SavedNote, SearchHit, SearchResult } from './api.js';
+import type {
+  AppendNoteInput,
+  EditedNote,
+  EditNoteInput,
+  FullNote,
+  RecallMatch,
+  SaveNoteInput,
+  SavedNote,
+  SearchHit,
+  SearchResult,
+} from './api.js';
 import { resolveConfig } from './config.js';
 import { openLocalLibrary } from './local/library.js';
 import { LocalModeError } from './local/runtime.js';
@@ -17,6 +27,8 @@ import { resolveMode, type ModeResolution } from './mode.js';
  */
 export interface JotBackend {
   saveNote(input: SaveNoteInput): Promise<SavedNote>;
+  editNote(input: EditNoteInput): Promise<EditedNote>;
+  appendNote(input: AppendNoteInput): Promise<EditedNote>;
   searchNotes(query: string): Promise<SearchResult>;
   recallNotes(query: string): Promise<RecallMatch[]>;
   getNote(id: string): Promise<FullNote>;
@@ -66,6 +78,14 @@ export class LocalBackend implements JotBackend {
     }
   }
 
+  async editNote(_input: EditNoteInput): Promise<EditedNote> {
+    throw notInLocalMode('editing a note');
+  }
+
+  async appendNote(_input: AppendNoteInput): Promise<EditedNote> {
+    throw notInLocalMode('appending to a note');
+  }
+
   async searchNotes(): Promise<SearchResult> {
     throw notInLocalMode('search');
   }
@@ -101,8 +121,8 @@ export class LocalBackend implements JotBackend {
  * previous jot's tag vocabulary and passes it into the next, so a mode switch
  * mid-session would normalize a local jot's tags against the *account's*
  * spellings (or vice versa) — account data steering writes into the local
- * library. The vocabulary hint is dropped on the first save after the target
- * changes; the server re-caches from that save's own result.
+ * library. The vocabulary hint is dropped on the first save and on every edit
+ * after a target change until a save re-caches the target's own spellings.
  */
 export function serveBackend(
   env: Record<string, string | undefined> = process.env,
@@ -118,6 +138,15 @@ export function serveBackend(
       lastSaveTarget = target;
       return backend.saveNote(stale ? { ...input, vocabulary: undefined } : input);
     },
+    editNote: (input) => {
+      const { backend, resolution } = resolve();
+      const target = resolution.mode === 'local' ? `local:${resolution.dir}` : 'account';
+      // Edits return no vocabulary, so only a successful jot can refresh the
+      // source of this hint. Keep dropping it on later edits until then.
+      const stale = lastSaveTarget !== undefined && lastSaveTarget !== target;
+      return backend.editNote(stale ? { ...input, vocabulary: undefined } : input);
+    },
+    appendNote: (input) => resolve().backend.appendNote(input),
     searchNotes: (query) => resolve().backend.searchNotes(query),
     recallNotes: (query) => resolve().backend.recallNotes(query),
     getNote: (id) => resolve().backend.getNote(id),
@@ -138,7 +167,8 @@ export interface ResolvedBackend {
  */
 export function resolveBackend(
   env: Record<string, string | undefined> = process.env,
-  makeApi: (env: Record<string, string | undefined>) => NotesApi = (e) => new NotesApi(resolveConfig(e)),
+  makeApi: (env: Record<string, string | undefined>) => NotesApi = (e) =>
+    new NotesApi(resolveConfig(e)),
 ): ResolvedBackend {
   const resolution = resolveMode(env);
   if (resolution.mode === 'local') {

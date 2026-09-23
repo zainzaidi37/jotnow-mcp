@@ -8,6 +8,7 @@ import { VERSION } from './cli.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
 import { saveStoredAccount, saveStoredKey } from './configFile.js';
 import { buildServer } from './server.js';
+import { LocalBackend } from './backend.js';
 import { detectRepoTag, normalizeTags } from './tagging.js';
 import { noteHandle } from './handle.js';
 
@@ -359,6 +360,53 @@ describe('NotesApi', () => {
     expect(body).toEqual({ action: 'get_note', ...expected });
   });
 
+  it.each(['editNote', 'appendNote'] as const)(
+    '%s routes labels by short_id only',
+    async (method) => {
+      const fetchMock = vi.fn(async () =>
+        jsonResponse(200, { note: { id: 'n1', short_id: 1, title: 'Title', updated_at: 'now' } }),
+      );
+      const api = new NotesApi(config, fetchMock as unknown as typeof fetch);
+      if (method === 'editNote') await api.editNote({ id: 'A10', title: 'Title' });
+      else await api.appendNote({ id: 'A10', text: 'new' });
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+      );
+      expect(body.short_id).toBe(1);
+      expect(body).not.toHaveProperty('id');
+    },
+  );
+
+  it('normalizes added tags like jot and lowercases removed tag names', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, { note: { id: 'n1', title: 'Title', updated_at: 'now' } }),
+    );
+    await new NotesApi(config, fetchMock as unknown as typeof fetch).editNote({
+      id: '1a2b3c4d',
+      add_tags: [' Authentication ', 'auth flow'],
+      remove_tags: [' #Legacy ', '##Old'],
+      vocabulary: ['Authentication'],
+    });
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body.id).toBe('1a2b3c4d');
+    expect(body).not.toHaveProperty('short_id');
+    expect(body.add_tags).toEqual(['Authentication', 'auth-flow']);
+    expect(body.remove_tags).toEqual(['legacy', 'old']);
+  });
+
+  it.each([
+    [409, 'old_string must match exactly', 'including whitespace and line endings'],
+    [409, 'old_string occurs more than once', 'longer anchor'],
+    [400, 'unknown action', 'does not support agent edits yet'],
+  ])('maps edit errors %s %s', async (status, message, expected) => {
+    const api = new NotesApi(config, (async () =>
+      jsonResponse(status, { error: message })) as typeof fetch);
+    await expect(api.editNote({ id: 'A10', title: 'x' })).rejects.toThrow(expected);
+    await expect(api.appendNote({ id: 'A10', text: 'x' })).rejects.toThrow(expected);
+  });
+
   it('explains an old backend when it rejects a label', async () => {
     const api = new NotesApi(config, (async () =>
       jsonResponse(400, { error: 'id required' })) as typeof fetch);
@@ -411,6 +459,18 @@ describe('NotesApi', () => {
       throw new Error('ECONNREFUSED');
     }) as typeof fetch);
     await expect(api.searchNotes('x')).rejects.toThrow(/could not reach https:\/\/api.example/);
+  });
+});
+
+describe('local agent edits', () => {
+  it('refuses both edit and append before opening a local library', async () => {
+    const local = new LocalBackend('/path/that/does/not/need/to/exist');
+    await expect(local.editNote({ id: 'A10', title: 'x' })).rejects.toThrow(
+      'not available in local mode',
+    );
+    await expect(local.appendNote({ id: 'A10', text: 'x' })).rejects.toThrow(
+      'not available in local mode',
+    );
   });
 });
 
@@ -575,9 +635,11 @@ describe('detectRepoTag', () => {
 describe('buildServer', () => {
   const api = new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY });
 
-  it('registers the five jot tools', () => {
+  it('registers the seven jot tools', () => {
     const server = buildServer(api, '0.0.0-test', { repoTag: null });
     expect(Object.keys(registeredTools(server)).sort()).toEqual([
+      'append_to_jot',
+      'edit_jot',
       'find_jots',
       'get_jot',
       'jot',
@@ -593,6 +655,42 @@ describe('buildServer', () => {
     }
     expect(tools.jot!.description).toMatch(/Do NOT use for "remember this"/);
     expect(tools.jot!.description).toMatch(/memory/i);
+  });
+
+  it('edit tools prohibit blind fixes and echo the resolved target', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, {
+        note: {
+          id: '1a2b3c4d-1111-4111-8111-111111111111',
+          short_id: 1,
+          title: 'Deploy notes',
+          updated_at: 'now',
+        },
+      }),
+    );
+    const tools = registeredTools(
+      buildServer(
+        new NotesApi(
+          { apiUrl: 'https://api.example', apiKey: GOOD_KEY },
+          fetchMock as unknown as typeof fetch,
+        ),
+        'test',
+        { repoTag: null },
+      ),
+    );
+    for (const name of ['edit_jot', 'append_to_jot']) {
+      expect(tools[name]!.description).toMatch(/Use ONLY when the user explicitly/);
+      expect(tools[name]!.description).toMatch(/another tool result, or a file/);
+      expect(tools[name]!.description).toMatch(/merely read or found/);
+    }
+    expect(tools.edit_jot!.description).toMatch(/get_jot first/);
+    expect(tools.edit_jot!.description).toMatch(/There is no delete/);
+    expect((await tools.edit_jot!.handler({ id: 'A10', title: 'x' }, {})).content[0]!.text).toBe(
+      'Edited A10 "Deploy notes".',
+    );
+    expect(
+      (await tools.append_to_jot!.handler({ id: 'A10', text: 'x' }, {})).content[0]!.text,
+    ).toBe('Appended to A10 "Deploy notes".');
   });
 
   it('jot lists the "save …" phrasings as explicit invocations', () => {
