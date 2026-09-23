@@ -89,6 +89,9 @@ export const LOCAL_TABLE_NAMES = [...V1_TABLE_NAMES, ...V2_TABLE_NAMES] as const
 
 export type LocalTableName = (typeof LOCAL_TABLE_NAMES)[number];
 
+/** Columns present in the current record but introduced after a shipped schema. */
+export const ADDED_COLUMNS = [{ version: 3, table: 'notes', column: 'short_id' }] as const;
+
 /** How one column is stored, and what a (de)hydrating implementation owes it. */
 export interface SqliteColumn {
   /** Declared type. Also the affinity, which is the point (rule 2 above). */
@@ -195,6 +198,7 @@ export const LOCAL_STORE_SQLITE_SCHEMA: Readonly<Record<LocalTableName, SqliteTa
       created_at: TEXT,
       updated_at: TEXT,
       deleted_at: TEXT_NULL,
+      short_id: INT_NULL,
     },
     primaryKey: ['id'],
     autoKey: null,
@@ -670,9 +674,21 @@ export function renderTableSql(table: string, schema: SqliteTableSchema): string
  */
 export function renderSchemaSql(
   tables: readonly LocalTableName[] = LOCAL_TABLE_NAMES,
+  asOf = Number.POSITIVE_INFINITY,
 ): string {
   return tables
-    .map((table) => renderTableSql(table, LOCAL_STORE_SQLITE_SCHEMA[table]))
+    .map((table) => {
+      const schema = LOCAL_STORE_SQLITE_SCHEMA[table];
+      const columns = Object.fromEntries(
+        Object.entries(schema.columns).filter(
+          ([column]) =>
+            !ADDED_COLUMNS.some(
+              (added) => added.table === table && added.column === column && added.version > asOf,
+            ),
+        ),
+      );
+      return renderTableSql(table, { ...schema, columns });
+    })
     .join('\n\n');
 }
 
@@ -687,12 +703,12 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
     description: 'local_store_schema',
-    sql: `${DDL_HEADER}\n\n${renderSchemaSql(V1_TABLE_NAMES)}\n`,
+    sql: `${DDL_HEADER}\n\n${renderSchemaSql(V1_TABLE_NAMES, 1)}\n`,
   },
   {
     version: 2,
     description: 'local_versions_and_recalls',
-    sql: `${DDL_HEADER}\n\n${V2_NOTE}\n\n${renderSchemaSql(V2_TABLE_NAMES)}\n`,
+    sql: `${DDL_HEADER}\n\n${V2_NOTE}\n\n${renderSchemaSql(V2_TABLE_NAMES, 2)}\n`,
   },
 ];
 

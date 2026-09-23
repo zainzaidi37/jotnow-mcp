@@ -37,12 +37,10 @@ export const BUSY_TIMEOUT_MS = 5000;
  * (`notes`, `folders`, `tags`, `note_tags`). A library below it cannot hold a
  * jot at all.
  *
- * Accepting `MIN..MAX` leans on an invariant worth naming: the applier's
- * INSERTs name every column of the **newest** vendored schema, so no shipped
- * migration may add a column to those four tables without raising this floor
- * alongside it — an older-but-accepted library would refuse every jot with a
- * no-such-column error. Migration 2 added tables only, so the range is safe
- * today.
+ * Accepting `MIN..MAX` relies on the applier's version-aware omission rule:
+ * it omits a column added after the library's schema version only when the
+ * planned value is null. A non-null value refuses before an INSERT, so an old
+ * library can still capture jots without silently losing a new value.
  */
 export const MIN_SUPPORTED_SCHEMA_VERSION = 1;
 
@@ -173,8 +171,8 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     }
     if (schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION) {
       throw new LocalModeError(
-        `the jotnow local library at ${pointer.db_path} has no schema applied ` +
-          `(migration version ${schemaVersion}). Launch the desktop app to migrate it; ` +
+        `the jotnow local library at ${pointer.db_path} has schema version ${schemaVersion}, ` +
+          `below this CLI's minimum ${MIN_SUPPORTED_SCHEMA_VERSION}. Launch the desktop app to migrate it; ` +
           `nothing was written.`,
       );
     }

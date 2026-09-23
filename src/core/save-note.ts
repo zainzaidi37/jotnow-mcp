@@ -210,6 +210,7 @@ export interface PlannedNoteRow {
   readonly pinned_at: null;
   readonly pinned_in: null;
   readonly sync_seq: null;
+  readonly short_id: null;
   readonly created_at: string;
   readonly updated_at: string;
   readonly deleted_at: null;
@@ -342,6 +343,7 @@ export function planSaveNote(context: SaveNoteContext, input: SaveNoteInput): Sa
     source,
     pinned_at: null,
     pinned_in: null,
+    short_id: null,
     ...stamps,
   };
   ops.push({ table: 'notes', op: 'insert', row: noteRow });

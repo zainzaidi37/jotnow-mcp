@@ -9,6 +9,7 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  ADDED_COLUMNS,
   LOCAL_STORE_SQLITE_SCHEMA,
   planSaveNote,
   selectTagVocabulary,
@@ -20,7 +21,12 @@ import {
 } from '../core/index.js';
 import type { SavedNote } from '../api.js';
 import { normalizeTags } from '../tagging.js';
-import { busyRefusal, isSqliteBusy, type LocalLibrary } from './library.js';
+import {
+  busyRefusal,
+  isSqliteBusy,
+  MAX_SUPPORTED_SCHEMA_VERSION,
+  type LocalLibrary,
+} from './library.js';
 import type { SqliteDatabase } from './runtime.js';
 
 export interface LocalSaveNoteInput {
@@ -42,14 +48,25 @@ export interface LocalSaveNoteInput {
  * `INSERT OR IGNORE`, the SQL's `on conflict do nothing`. Every other op must
  * fail on conflict: that is how the planner's no-update-path quirk is enforced.
  */
-function applyOp(db: SqliteDatabase, op: SaveNoteOp): void {
-  const columns = Object.keys(LOCAL_STORE_SQLITE_SCHEMA[op.table].columns);
+function applyOp(db: SqliteDatabase, op: SaveNoteOp, schemaVersion: number): void {
+  const row = op.row as unknown as Record<string, unknown>;
+  const columns = Object.keys(LOCAL_STORE_SQLITE_SCHEMA[op.table].columns).filter((column) => {
+    const added = ADDED_COLUMNS.find(
+      (entry) => entry.table === op.table && entry.column === column,
+    );
+    if (!added || added.version <= schemaVersion) return true;
+    if (row[column] != null) {
+      throw new Error(
+        `Cannot write ${op.table}.${column}: local library schema ${schemaVersion} lacks this column`,
+      );
+    }
+    return false;
+  });
   const ignore = 'ifExists' in op;
   const sql =
     `INSERT ${ignore ? 'OR IGNORE ' : ''}INTO "${op.table}" ` +
     `(${columns.map((column) => `"${column}"`).join(', ')}) ` +
     `VALUES (${columns.map(() => '?').join(', ')})`;
-  const row = op.row as unknown as Record<string, unknown>;
   db.prepare(sql).run(...columns.map((column) => row[column] ?? null));
 }
 
@@ -92,9 +109,13 @@ function inWriteTransaction<T>(db: SqliteDatabase, work: () => T): T {
  * conformance suite — which runs *this* function — asserts the local side
  * leaves the library exactly as it found it.
  */
-export function applySaveNotePlan(db: SqliteDatabase, ops: readonly SaveNoteOp[]): void {
+export function applySaveNotePlan(
+  db: SqliteDatabase,
+  ops: readonly SaveNoteOp[],
+  schemaVersion = MAX_SUPPORTED_SCHEMA_VERSION,
+): void {
   inWriteTransaction(db, () => {
-    for (const op of ops) applyOp(db, op);
+    for (const op of ops) applyOp(db, op, schemaVersion);
   });
 }
 
@@ -148,7 +169,7 @@ export function saveNoteLocally(library: LocalLibrary, input: LocalSaveNoteInput
           source: input.source ?? 'mcp',
         },
       );
-      for (const op of planned.ops) applyOp(db, op);
+      for (const op of planned.ops) applyOp(db, op, library.schemaVersion);
       return planned;
     });
 

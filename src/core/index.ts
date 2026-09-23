@@ -64,9 +64,13 @@ export const NoteSchema = z.object({
   created_at: timestamptz,
   updated_at: timestamptz,
   deleted_at: timestamptz.nullable(),
+  // A backend one release behind omits this column. The default keeps the
+  // inferred Note key required while allowing its server rows to parse.
+  short_id: z.number().int().positive().nullable().default(null),
 });
 export type Note = z.infer<typeof NoteSchema>;
 export type NoteSource = Note['source'];
+export { NOTE_LABEL_MAX_CHARS, noteLabel, parseNoteLabel } from './note-label.js';
 
 export const FolderSchema = z.object({
   id: uuid,

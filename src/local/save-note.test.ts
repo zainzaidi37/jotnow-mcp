@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -91,6 +92,8 @@ describe('saveNoteLocally', () => {
 
     const notes = rows(library, 'notes');
     expect(notes).toHaveLength(1);
+    expect(library.schemaVersion).toBe(2);
+    expect(Object.keys(notes[0]!)).not.toContain('short_id');
     expect(notes[0]).toMatchObject({
       id: saved.id,
       user_id: WORKSPACE,
@@ -112,8 +115,18 @@ describe('saveNoteLocally', () => {
   });
 
   it('reuses an existing folder case-insensitively and an existing tag exactly', () => {
-    const first = saveNoteLocally(library, { title: 'one', body: '', folder: 'Work', tags: ['auth'] });
-    const second = saveNoteLocally(library, { title: 'two', body: '', folder: 'work', tags: ['auth'] });
+    const first = saveNoteLocally(library, {
+      title: 'one',
+      body: '',
+      folder: 'Work',
+      tags: ['auth'],
+    });
+    const second = saveNoteLocally(library, {
+      title: 'two',
+      body: '',
+      folder: 'work',
+      tags: ['auth'],
+    });
 
     expect(rows(library, 'folders')).toHaveLength(1);
     expect(rows(library, 'tags')).toHaveLength(1);
@@ -181,6 +194,26 @@ describe('applySaveNotePlan', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
+  it('refuses a non-null planned value for a column the v2 library lacks', () => {
+    const plan = planSaveNote(
+      {
+        userId: WORKSPACE,
+        folders: [],
+        tags: [],
+        now: '2026-08-05T10:00:00.000Z',
+        newId: randomUUID,
+      },
+      { id: randomUUID(), title: 'new', body: '' },
+    );
+    const note = plan.ops.find((op) => op.table === 'notes');
+    expect(note).toBeDefined();
+    (note!.row as unknown as { short_id: number }).short_id = 1;
+    expect(() => applySaveNotePlan(library.db, plan.ops, library.schemaVersion)).toThrow(
+      'local library schema 2 lacks this column',
+    );
+    expect(rows(library, 'notes')).toEqual([]);
+  });
+
   it('unwinds the whole plan when an op fails mid-way — the file is untouched', () => {
     // The RPC has no update path: a note id that already exists is a unique
     // violation that rolls back the folder and tag the call had already
@@ -195,7 +228,10 @@ describe('applySaveNotePlan', () => {
       newId: () => `planned-${++counter}`,
     };
     const noteId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-    applySaveNotePlan(library.db, planSaveNote(context, { id: noteId, title: 'first', body: '' }).ops);
+    applySaveNotePlan(
+      library.db,
+      planSaveNote(context, { id: noteId, title: 'first', body: '' }).ops,
+    );
 
     const before = {
       notes: rows(library, 'notes'),
@@ -232,9 +268,15 @@ describe('applySaveNotePlan', () => {
       newId: () => 'planned-1',
     };
     const noteId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
-    applySaveNotePlan(library.db, planSaveNote(context, { id: noteId, title: 'first', body: '' }).ops);
+    applySaveNotePlan(
+      library.db,
+      planSaveNote(context, { id: noteId, title: 'first', body: '' }).ops,
+    );
     expect(() =>
-      applySaveNotePlan(library.db, planSaveNote(context, { id: noteId, title: 'again', body: '' }).ops),
+      applySaveNotePlan(
+        library.db,
+        planSaveNote(context, { id: noteId, title: 'again', body: '' }).ops,
+      ),
     ).toThrow();
 
     const saved = saveNoteLocally(library, { title: 'after', body: '' });
