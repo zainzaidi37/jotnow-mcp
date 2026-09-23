@@ -92,8 +92,7 @@ describe('saveNoteLocally', () => {
 
     const notes = rows(library, 'notes');
     expect(notes).toHaveLength(1);
-    expect(library.schemaVersion).toBe(2);
-    expect(Object.keys(notes[0]!)).not.toContain('short_id');
+    expect(library.schemaVersion).toBe(3);
     expect(notes[0]).toMatchObject({
       id: saved.id,
       user_id: WORKSPACE,
@@ -101,6 +100,7 @@ describe('saveNoteLocally', () => {
       body: 'db reset breaks kong',
       source: 'cli',
       sync_seq: null,
+      short_id: null,
       deleted_at: null,
     });
     expect(rows(library, 'folders')[0]).toMatchObject({ name: 'Notes', user_id: WORKSPACE });
@@ -195,6 +195,10 @@ describe('applySaveNotePlan', () => {
   });
 
   it('refuses a non-null planned value for a column the v2 library lacks', () => {
+    library.close();
+    rmSync(join(dir, 'local'), { recursive: true, force: true });
+    makeLibraryFixture(dir, { schemaVersion: 2 });
+    library = openLocalLibrary(dir);
     const plan = planSaveNote(
       {
         userId: WORKSPACE,
@@ -212,6 +216,18 @@ describe('applySaveNotePlan', () => {
       'local library schema 2 lacks this column',
     );
     expect(rows(library, 'notes')).toEqual([]);
+  });
+
+  it('omits null short_id when applying a jot to a v2 library', () => {
+    library.close();
+    rmSync(join(dir, 'local'), { recursive: true, force: true });
+    makeLibraryFixture(dir, { schemaVersion: 2 });
+    library = openLocalLibrary(dir);
+    const saved = saveNoteLocally(library, { title: 'older library', body: '' });
+    expect(library.schemaVersion).toBe(2);
+    expect(rows(library, 'notes')).toHaveLength(1);
+    expect(rows(library, 'notes')[0]!.id).toBe(saved.id);
+    expect(Object.keys(rows(library, 'notes')[0]!)).not.toContain('short_id');
   });
 
   it('unwinds the whole plan when an op fails mid-way — the file is untouched', () => {

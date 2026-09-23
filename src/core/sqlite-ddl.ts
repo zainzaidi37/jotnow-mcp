@@ -633,6 +633,16 @@ const V2_NOTE = `-- Phase 8 WP6: the two tables a LOCAL library holds and a sign
 -- refuses to open a database whose applied migration no longer matches. Purely
 -- additive, so an existing library migrates forward with every row intact.`;
 
+/**
+ * Migration 3 adds the server's per-user alias to desktop libraries. Shipped
+ * migrations are never edited (sqlx checksums the whole file, comments
+ * included), so this note states only what stays true.
+ */
+const V3_NOTE = `-- notes.short_id holds the per-user alias the server allocates, shown as a
+-- label such as A10. A signed-in workspace stores the value it pulls; nothing
+-- allocates one locally, so a local-mode note holds NULL. The UUID remains the
+-- note's primary key.`;
+
 function quote(identifier: string): string {
   return `"${identifier.replace(/"/g, '""')}"`;
 }
@@ -640,6 +650,18 @@ function quote(identifier: string): string {
 function columnDefinition(name: string, column: SqliteColumn, autoKey: boolean): string {
   if (autoKey) return `${quote(name)} INTEGER PRIMARY KEY AUTOINCREMENT`;
   return `${quote(name)} ${column.type}${column.nullable ? '' : ' NOT NULL'}`;
+}
+
+function addedColumnDefinition(version: number, table: LocalTableName, name: string): string {
+  const declared = ADDED_COLUMNS.some(
+    (added) => added.version === version && added.table === table && added.column === name,
+  );
+  const column = LOCAL_STORE_SQLITE_SCHEMA[table].columns[name];
+  if (!declared || !column || !column.nullable) {
+    throw new Error(`migration ${version} must add a declared nullable column: ${table}.${name}`);
+  }
+  // ADD COLUMN without a default must accept the existing rows in a non-empty library.
+  return columnDefinition(name, column, false);
 }
 
 /**
@@ -709,6 +731,11 @@ export const SQLITE_MIGRATIONS: readonly SqliteMigration[] = [
     version: 2,
     description: 'local_versions_and_recalls',
     sql: `${DDL_HEADER}\n\n${V2_NOTE}\n\n${renderSchemaSql(V2_TABLE_NAMES, 2)}\n`,
+  },
+  {
+    version: 3,
+    description: 'note_short_ids',
+    sql: `${DDL_HEADER}\n\n${V3_NOTE}\n\nALTER TABLE "notes" ADD COLUMN ${addedColumnDefinition(3, 'notes', 'short_id')};\n`,
   },
 ];
 

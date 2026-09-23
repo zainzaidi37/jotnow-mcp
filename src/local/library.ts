@@ -233,8 +233,9 @@ export function isSqliteBusy(error: unknown): boolean {
 }
 
 /**
- * `meta` is a key/value table and `workspace_uuid` is the only key ever minted
- * into it (§5.1).
+ * `meta` is a key/value table. `workspace_uuid`, which the desktop mints once,
+ * is the only key the CLI reads from it (§5.1); local mode keeps its own
+ * markers there too.
  */
 function readWorkspaceUuid(db: SqliteDatabase, path: string): string {
   let value: unknown;
