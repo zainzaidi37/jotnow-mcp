@@ -6,8 +6,16 @@
 
 import { configDir, configFilePath, loadStoredConfig } from './configFile.js';
 
-export const DEFAULT_API_URL =
-  'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api';
+const LEGACY_DEFAULT_API_URL = 'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api';
+
+// Warm prod jots measured 1.6–4.2 s at the caller's edge vs 0.5–1.0 s
+// beside the us-east-1 database (2026-09-23).
+export const DEFAULT_API_URL = `${LEGACY_DEFAULT_API_URL}?forceFunctionRegion=us-east-1`;
+
+/** Old saved/default endpoints still mean production, including in CLI setup. */
+export function normalizeDefaultApiUrl(url: string): string {
+  return url === LEGACY_DEFAULT_API_URL ? DEFAULT_API_URL : url;
+}
 
 export const API_KEY_PATTERN = /^jn_live_[A-Za-z0-9]{43}$/;
 
@@ -41,7 +49,7 @@ export function resolveConfig(
           'It overrides any stored key, so the stored key (if any) will not be used until this is fixed or unset.',
       );
     }
-    return { apiUrl: explicitApiUrl ?? DEFAULT_API_URL, apiKey: envKey };
+    return { apiUrl: normalizeDefaultApiUrl(explicitApiUrl ?? DEFAULT_API_URL), apiKey: envKey };
   }
 
   const loaded = loadStored();
@@ -55,7 +63,7 @@ export function resolveConfig(
     );
   }
   return {
-    apiUrl: explicitApiUrl ?? stored.apiUrl ?? DEFAULT_API_URL,
+    apiUrl: normalizeDefaultApiUrl(explicitApiUrl ?? stored.apiUrl ?? DEFAULT_API_URL),
     apiKey: stored.apiKey,
   };
 }

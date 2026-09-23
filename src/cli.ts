@@ -1,7 +1,12 @@
 import { createRequire } from 'node:module';
 import { ApiError, NotesApi, type RecallMatch, type SearchHit, type SearchResult } from './api.js';
 import { resolveBackend, serveBackend } from './backend.js';
-import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
+import {
+  API_KEY_PATTERN,
+  DEFAULT_API_URL,
+  normalizeDefaultApiUrl,
+  resolveConfig,
+} from './config.js';
 import {
   configDir,
   loadStoredConfig,
@@ -100,7 +105,7 @@ function selectedApiUrl(flags: ReadonlyMap<string, string>, env: NodeJS.ProcessE
   const apiUrl =
     apiUrlFlag === undefined ? env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL : apiUrlFlag.trim();
   if (apiUrl === '') throw new Error('--api-url needs a non-empty URL');
-  return apiUrl;
+  return normalizeDefaultApiUrl(apiUrl);
 }
 
 const MCP_API_PATH = '/functions/v1/mcp-api';

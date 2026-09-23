@@ -66,6 +66,26 @@ describe('runKey', () => {
     expect(stdout.all()).toContain('codex mcp add jotnow -- npx -y jotnow');
   });
 
+  it('treats a legacy production URL as the default when saving a key', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { runKey } = await import('./cli.js');
+    const stdout = capture();
+    await runKey({
+      readHidden: async () => GOOD_KEY,
+      stdout,
+      stderr: capture(),
+      env: {
+        ...process.env,
+        JOTNOW_API_URL: 'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api',
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
+    expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
+    expect(stdout.all()).not.toContain('JOTNOW_API_URL');
+  });
+
   it('malformed key: errors before any API call, saves nothing', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -282,6 +302,30 @@ describe('copy', () => {
     expect(output).toContain(
       `codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`,
     );
+  });
+
+  it('runInit omits JOTNOW_API_URL for the legacy production endpoint', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logs: string[] = [];
+    const logSpy = vi
+      .spyOn(console, 'log')
+      .mockImplementation((...args) => void logs.push(args.join(' ')));
+    const { main } = await import('./cli.js');
+    try {
+      await main([
+        'init',
+        '--key',
+        GOOD_KEY,
+        '--api-url',
+        'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api',
+      ]);
+    } finally {
+      logSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+    expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
+    expect(logs.join('\n')).not.toContain('JOTNOW_API_URL');
   });
 
   it('runInit carries a custom endpoint into both client commands with shell-safe quoting', async () => {
