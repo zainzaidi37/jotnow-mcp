@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT.
 //
 // Vendored copy of packages/core/src/sqlite-ddl.ts, emitted by
-// `pnpm --filter @jotnow/core emit:mcp-core` (plans/desktop-app.md §4.5).
+// `pnpm --filter @kinjot/core emit:mcp-core` (plans/desktop-app.md §4.5).
 // Edit the source module and re-run; CI fails on any difference.
 
 /**
@@ -602,7 +602,7 @@ export interface SqliteMigration {
 export const DDL_HEADER = `-- GENERATED FILE — do not edit.
 --
 -- Emitted from packages/core/src/sqlite-ddl.ts by
--- \`pnpm --filter @jotnow/core emit:sqlite-ddl\`. The schema is authored once,
+-- \`pnpm --filter @kinjot/core emit:sqlite-ddl\`. The schema is authored once,
 -- in TypeScript, next to the Zod row schemas, because Dexie (browser) and
 -- SQLite (desktop) implement one frozen LocalStore contract and a column that
 -- exists in only one engine is an invisible divergence. CI re-runs the emit and

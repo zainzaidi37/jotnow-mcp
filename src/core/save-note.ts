@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT.
 //
 // Vendored copy of packages/core/src/save-note.ts, emitted by
-// `pnpm --filter @jotnow/core emit:mcp-core` (plans/desktop-app.md §4.5).
+// `pnpm --filter @kinjot/core emit:mcp-core` (plans/desktop-app.md §4.5).
 // Edit the source module and re-run; CI fails on any difference.
 
 /**
@@ -34,7 +34,7 @@
  * New-row ids and the timestamp are **inputs** ({@link SaveNoteContext.newId},
  * {@link SaveNoteContext.now}), never read from the ambient environment. Two
  * reasons beyond testability. The vendored copy of this file runs inside the
- * `jotnow` CLI (§4.5), where a global `crypto` is not guaranteed across the
+ * `kinjot` CLI (§4.5), where a global `crypto` is not guaranteed across the
  * whole supported Node range; and a planner that reads the clock cannot be
  * replayed, which is what the conformance suite does to compare two engines.
  *

@@ -1,181 +1,192 @@
-# Jotnow
+# Kinjot
 
-Tell your agent to "jot that down" and it's saved to your account at [jotnow.dev](https://jotnow.dev): tagged, searchable, exportable. Works with Claude Code, Codex, and any other MCP client, plus a terminal CLI.
+Keep what your AI coding agent figures out. Tell Claude Code or Codex to
+"jot that down", and the note lands in your [Kinjot](https://kinjot.com) account,
+tagged and searchable.
 
-Free to sign in, and use. Export all your notes in markdown anytime, no vendor-lockin.
+- Works with Claude Code, Codex and any other MCP client, plus a terminal CLI.
+- Free to sign up and use. Export every note as Markdown whenever you like.
+- Saves only when you ask. It never records your chats on its own.
 
-[Documentation](https://jotnow.dev/docs) · [Claude Code setup](https://jotnow.dev/docs/claude-code) · [Codex setup](https://jotnow.dev/docs/codex) · [MCP tool reference](https://jotnow.dev/docs/mcp-tools)
+[Documentation](https://kinjot.com/docs) · [Claude Code setup](https://kinjot.com/docs/claude-code) · [Codex setup](https://kinjot.com/docs/codex) · [MCP tool reference](https://kinjot.com/docs/mcp-tools)
 
-Jotnow runs as a local stdio MCP server. Account mode connects to the Jotnow
-API; desktop local mode supports capture only. Notes are saved when you ask
-your agent to call the tool; this server does not automatically record chats.
-The MCP server and CLI in this repository are MIT licensed.
+## Quick start
 
-## Setup
-
-1. Sign up (free) at [jotnow.dev](https://jotnow.dev), then open the confirmation email; its link
-   confirms your address and signs you in. Or sign in to an existing account.
+1. Sign up at [kinjot.com](https://kinjot.com) (free) and confirm your email.
 2. Open **Settings > API keys** and create a key.
-3. Install and store the key once for this machine:
+3. Install the CLI and save your key:
+
+   ```bash
+   npm install --global kinjot
+   kinjot key
+   ```
+
+   `kinjot key` asks for the key, checks it, and saves it to
+   `~/.kinjot/config.json`. Only your user can read that file. It then prints
+   the setup for your MCP client.
+
+4. Connect your agent:
+
+   ```bash
+   # Claude Code (add -s user to use it in every project)
+   claude mcp add kinjot -- npx -y kinjot
+
+   # Codex
+   codex mcp add kinjot -- npx -y kinjot
+   ```
+
+5. Tell your agent to "jot that down". Later, ask it to find your jots about
+   something, or to show your recent jots.
+
+## What your agent can do
+
+| Tool               | What it does                                                             |
+| ------------------ | ------------------------------------------------------------------------ |
+| `jot`              | Save a note                                                              |
+| `find_jots`        | Search your notes by keyword                                             |
+| `recall_jots`      | Search your notes by meaning (Pro)                                       |
+| `get_jot`          | Read one note in full                                                    |
+| `edit_jot`         | Replace one exact passage in a note, or change its title, tags or folder |
+| `append_to_jot`    | Add a paragraph to the end of a note                                     |
+| `list_recent_jots` | List your most recently updated notes                                    |
+
+Every note has a short label, like `A10`. Listings show it, and your agent can
+use it to open, edit or add to that note, for example "add this to A10".
+
+## CLI
+
+Once your key is saved, the same features work from a terminal:
 
 ```bash
-npm install --global jotnow
-jotnow key
+kinjot add "Useful fix" --body "Restart the worker after changing its environment."
+kinjot search "worker environment"
+kinjot recall "why deployments use stale configuration"   # Pro
+kinjot get A10              # a label, an 8-character ID prefix, or a full ID
+kinjot append A10 --text "An update to this jot."
+kinjot recent 10
 ```
 
-`jotnow key` prompts for the key, validates it against the API, and saves it to a config file so every later `jotnow` command and MCP config on this machine picks it up automatically. It then prints the MCP configuration for your client, plus equivalent commands for Claude Code and Codex.
+Without a global install, put `npx` in front of any command, for example
+`npx kinjot recent`. `npx kinjot key` saves the key the same way.
 
-Once connected, ask your agent to "jot that down", find your jots, or list your recent jots.
+## Other ways to set up
 
-Prefer not to install globally, or want to configure an MCP client without touching your terminal first? Use the env-var flow instead:
+### Put the key in your MCP config instead
+
+If you'd rather not save the key on disk, print a config with the key in it:
 
 ```bash
-npx jotnow init --key jn_live_your_key
+npx kinjot init --key kj_live_your_key
 ```
 
-This validates the key and prints an MCP config block with the key embedded in its `env`, plus equivalent commands for Claude Code and Codex.
+This checks the key and prints the MCP config, plus the Claude Code and Codex
+commands, with the key in the `env` block. It saves nothing.
 
-For a self-hosted API, use guided setup (requires jotnow 0.4.3 or newer):
-
-```bash
-npx jotnow init-selfhost
-```
-
-Paste your Supabase project ref or URL, then paste your API key at the hidden
-prompt. A ref or origin is expanded to `/functions/v1/mcp-api`; a URL with a
-path is used as supplied. Empty or invalid project input stops setup before
-the key is sent. After validation, the command saves the endpoint and key
-together and prints the JSON configuration and Claude Code/Codex commands.
-
-For scripts or a custom API path, pass the endpoint directly. The explicit
-flag takes priority over `JOTNOW_API_URL`, and generated client configurations
-keep the selected endpoint:
-
-```bash
-npx jotnow init --api-url https://your-project.supabase.co/functions/v1/mcp-api --key jn_live_your_key
-```
-
-`init --key` validates and prints configuration without saving credentials.
-`init-selfhost` and `jotnow key --api-url <url>` save the validated endpoint
-beside the key, so later terminal commands need no endpoint environment
-variable. Custom credentials use config version 2: older CLIs refuse this file
-instead of ignoring its endpoint and sending the key to the hosted API.
-Hosted key files remain version 1. Update an older global installation with
-`npm install --global jotnow@latest` before using a saved self-hosted account.
-
-## MCP configuration
-
-### Claude Code
-
-For Claude Code or similar clients that use a JSON MCP configuration, once a key is stored via `jotnow key`, no `env` block is needed:
+For clients configured with JSON, the two forms look like this. With a key
+saved by `kinjot key`:
 
 ```json
 {
   "mcpServers": {
-    "jotnow": {
+    "kinjot": {
       "command": "npx",
-      "args": ["-y", "jotnow"]
+      "args": ["-y", "kinjot"]
     }
   }
 }
 ```
 
-Otherwise, configure a key directly in the MCP config (what `jotnow init` prints):
+With the key in the config (what `kinjot init` prints):
 
 ```json
 {
   "mcpServers": {
-    "jotnow": {
+    "kinjot": {
       "command": "npx",
-      "args": ["-y", "jotnow"],
+      "args": ["-y", "kinjot"],
       "env": {
-        "JOTNOW_API_KEY": "jn_live_your_key"
+        "KINJOT_API_KEY": "kj_live_your_key"
       }
     }
   }
 }
 ```
 
-### Codex
-
-After storing your key with `jotnow key`, add Jotnow to Codex:
-
-```bash
-codex mcp add jotnow -- npx -y jotnow
-```
-
-Codex stores MCP configuration in `~/.codex/config.toml`. The Codex CLI, IDE extension, and desktop app share this configuration. To configure Jotnow manually instead of using `codex mcp add`, add:
+Codex keeps its MCP config in `~/.codex/config.toml`, and its CLI, IDE extension
+and desktop app share it. To add Kinjot by hand instead of with
+`codex mcp add`:
 
 ```toml
-[mcp_servers.jotnow]
+[mcp_servers.kinjot]
 command = "npx"
-args = ["-y", "jotnow"]
+args = ["-y", "kinjot"]
 ```
 
-The server provides these tools:
-
-- `jot`: save a note
-- `find_jots`: search notes by keyword; listings lead with a label such as `A10`, or an 8-character ID prefix when no label is available
-- `recall_jots`: search notes by meaning; listings use the same label or prefix (account mode, Pro). Browser Recall with your own model key does not unlock this MCP tool.
-- `get_jot`: read one note by label, an ID prefix of at least 8 characters, or full UUID
-- `edit_jot`: change a named jot with an exact, unique text anchor or update its metadata
-- `append_to_jot`: append a paragraph to a named jot
-- `list_recent_jots`: list recently updated notes, each led by its label or 8-character ID prefix
-
-## CLI
-
-After a global install, store your key once:
+### A self-hosted Kinjot
 
 ```bash
-npm install --global jotnow
-jotnow key
+npx kinjot init-selfhost
 ```
 
-Then run commands directly:
+Paste your Supabase project ref or URL, then your API key at the hidden
+prompt. A ref or a bare origin becomes `…/functions/v1/mcp-api`, and a URL with
+a path is used as given. Setup stops before sending the key if the project is
+empty or invalid. Once the key checks out, the endpoint is saved with the key
+and the client setup is printed.
+
+For scripts or a custom API path, pass the endpoint yourself. The flag beats
+`KINJOT_API_URL`, and the printed configs keep the endpoint you chose:
 
 ```bash
-jotnow add "Useful fix" --body "Restart the worker after changing its environment."
-jotnow search "worker environment"
-jotnow recall "why deployments use stale configuration"
-jotnow get A10        # a label, an 8-character id prefix, or a full UUID
-jotnow append A10 --text "An update to this jot."
-jotnow recent 10
+npx kinjot init --api-url https://your-project.supabase.co/functions/v1/mcp-api --key kj_live_your_key
 ```
 
-Everything above also works without a global install by prefixing `npx`, e.g. `npx jotnow recent` — `npx jotnow key` stores the key the same way.
+`init --key` only prints. `init-selfhost` and `kinjot key --api-url <url>` save
+the endpoint beside the key, so later commands need no environment variable.
 
-## Local mode
+### Local mode (desktop app)
 
-If you use the Jotnow desktop app, `jotnow` can write jots straight into its
-local library instead of your account — no API key, no network:
+With the Kinjot desktop app installed, the CLI can write straight into the
+app's local library, with no API key and no network:
 
 ```bash
-jotnow use local      # write to the desktop app's local library
-jotnow use account    # write to your jotnow account
-jotnow where          # show which library jots go to, and why
+kinjot use local      # write to the desktop app's local library
+kinjot use account    # write to your Kinjot account
+kinjot where          # show where jots go, and why
 ```
 
-Local mode requires the desktop app (it creates and owns the library — the CLI
-never creates one). Only `jotnow add` and the MCP `jot` tool work locally;
-search, recall, get and recent live in the app. If both a local library and an
-API key are set up and no mode has been chosen, `jotnow` refuses with a hard
-error rather than guessing where your jots belong — run `jotnow use` once to
-choose (or set `JOTNOW_MODE` per command).
+- The desktop app creates and owns the library; the CLI never creates one.
+- Locally, only `kinjot add` and the MCP `jot` tool work. Search, recall, get
+  and recent live in the app.
+- If you have both a local library and a saved key, `kinjot` refuses to guess
+  where a jot belongs. Run `kinjot use` once to choose, or set `KINJOT_MODE`
+  for a single command.
 
 ## Environment variables
 
-- `JOTNOW_API_KEY`: your user-scoped API key from Jotnow settings. If set, it is used instead of (and takes priority over) any key stored by `jotnow key` — useful for CI or containers where nothing should be written to disk.
-- `JOTNOW_API_URL`: optional API endpoint override for local development or self-hosting. With a stored key, the saved endpoint is used when this override is absent. An explicit `JOTNOW_API_KEY` uses this override or the hosted default; it never inherits an unrelated stored endpoint.
-- `JOTNOW_CONFIG_DIR`: optional override for where `jotnow key` stores its config file (default `~/.jotnow`). Note: the desktop app reads the same variable from _its own_ environment, and an app launched from the Start menu or a shortcut does not inherit a variable you export in a shell — so setting it here usually points the CLI at a directory with no local-library pointer in it, and local mode won't be detected.
-- `JOTNOW_MODE`: `local` or `account` for a single command; overrides the choice stored by `jotnow use`
+- `KINJOT_API_KEY`: your API key. It takes priority over a key saved by
+  `kinjot key`, which suits CI and containers, where nothing should be written
+  to disk.
+- `KINJOT_API_URL`: an API endpoint for local development or self-hosting.
+  - A saved key keeps its saved endpoint when this is unset.
+  - `KINJOT_API_KEY` uses this or the hosted default, never a saved endpoint.
+- `KINJOT_CONFIG_DIR`: where `kinjot key` saves its config (default
+  `~/.kinjot`). The desktop app reads this variable from its own environment,
+  and an app started from the Start menu or a shortcut doesn't see one you
+  export in a shell. Setting it usually hides the local library from the CLI.
+- `KINJOT_MODE`: `local` or `account` for one command. It overrides
+  `kinjot use`.
 
-`jotnow key` stores the key in `~/.jotnow/config.json` (or `$JOTNOW_CONFIG_DIR/config.json`), created with permissions that only your user can read.
+## Security
 
-The npm package contains no account credentials or service-role secret. Each installation uses the API key supplied by its user. Keep that key private and revoke it from Jotnow settings if it is exposed.
+The package contains no credentials. Each installation uses the API key its
+user supplies. Keep yours private, and revoke it in Kinjot's settings if it
+leaks.
 
 ## Requirements
 
-- Node.js 22.13 or newer (Node 23 needs 23.4+). The floor is local mode's (`node:sqlite`); account mode still runs on Node 18+.
+Node.js 22.13 or newer (23.4 or newer on Node 23). Local mode sets that floor
+(`node:sqlite`); account mode alone runs on Node 18 or newer.
 
 ## License
 

@@ -12,7 +12,7 @@ import { LocalBackend } from './backend.js';
 import { detectRepoTag, normalizeTags } from './tagging.js';
 import { noteHandle } from './handle.js';
 
-const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
+const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -39,28 +39,29 @@ function registeredTools(server: ReturnType<typeof buildServer>): Record<string,
 
 describe('resolveConfig', () => {
   it('accepts a well-formed key and defaults the URL to production', () => {
-    const config = resolveConfig({ JOTNOW_API_KEY: GOOD_KEY });
+    const config = resolveConfig({ KINJOT_API_KEY: GOOD_KEY });
     expect(config).toEqual({ apiUrl: DEFAULT_API_URL, apiKey: GOOD_KEY });
   });
 
   it('honors a URL override', () => {
     const config = resolveConfig({
-      JOTNOW_API_KEY: GOOD_KEY,
-      JOTNOW_API_URL: 'http://127.0.0.1:54321/functions/v1/mcp-api',
+      KINJOT_API_KEY: GOOD_KEY,
+      KINJOT_API_URL: 'http://127.0.0.1:54321/functions/v1/mcp-api',
     });
     expect(config.apiUrl).toBe('http://127.0.0.1:54321/functions/v1/mcp-api');
   });
 
-  it('rejects malformed keys, including the pre-rebrand cn_live_ prefix', () => {
+  it('rejects malformed keys, including the old cn_live_ and jn_live_ prefixes', () => {
     for (const bad of [
-      'jn_live_short',
+      'kj_live_short',
       `sk_live_${'x'.repeat(43)}`,
-      'jn_test_' + 'x'.repeat(43),
+      'kj_test_' + 'x'.repeat(43),
       'cn_live_' + 'x'.repeat(43),
+      'jn_live_' + 'x'.repeat(43),
     ]) {
       // A no-op loader keeps these tests decoupled from any real stored-key
       // file; the malformed env branch never falls back to it anyway.
-      expect(() => resolveConfig({ JOTNOW_API_KEY: bad }, () => undefined)).toThrow(
+      expect(() => resolveConfig({ KINJOT_API_KEY: bad }, () => undefined)).toThrow(
         /does not look like/,
       );
     }
@@ -79,36 +80,36 @@ describe('resolveConfig', () => {
     expect(API_KEY_PATTERN.flags).toBe(vendored.API_KEY_PATTERN.flags);
   });
 
-  it('key pattern matches exactly jn_live_ + 43 alphanumerics', () => {
+  it('key pattern matches exactly kj_live_ + 43 alphanumerics', () => {
     expect(API_KEY_PATTERN.test(GOOD_KEY)).toBe(true);
     expect(API_KEY_PATTERN.test(`${GOOD_KEY}x`)).toBe(false);
     expect(API_KEY_PATTERN.test(GOOD_KEY.slice(0, -1))).toBe(false);
     expect(API_KEY_PATTERN.test(GOOD_KEY.replace('a', '!'))).toBe(false);
   });
 
-  it('no key found anywhere: friendly first-run error pointing at `jotnow key`', () => {
+  it('no key found anywhere: friendly first-run error pointing at `kinjot key`', () => {
     expect(() => resolveConfig({}, () => undefined)).toThrow(
-      /No API key found\. Run `jotnow key` to set one up, or set JOTNOW_API_KEY\./,
+      /No API key found\. Run `kinjot key` to set one up, or set KINJOT_API_KEY\./,
     );
   });
 
   it('a well-formed env key wins over a different, also-valid stored key', () => {
-    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
-    const config = resolveConfig({ JOTNOW_API_KEY: GOOD_KEY }, () => STORED_KEY);
+    const STORED_KEY = `kj_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const config = resolveConfig({ KINJOT_API_KEY: GOOD_KEY }, () => STORED_KEY);
     expect(config.apiKey).toBe(GOOD_KEY);
   });
 
   it('malformed env key throws even when a valid stored key exists — no silent fallback', () => {
-    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const STORED_KEY = `kj_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
     const loadStored = vi.fn(() => STORED_KEY);
-    expect(() => resolveConfig({ JOTNOW_API_KEY: 'jn_live_bad' }, loadStored)).toThrow(
+    expect(() => resolveConfig({ KINJOT_API_KEY: 'kj_live_bad' }, loadStored)).toThrow(
       /overrides any stored key/,
     );
     expect(loadStored).not.toHaveBeenCalled();
   });
 
   it('env unset, valid stored key present: the stored key is used', () => {
-    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const STORED_KEY = `kj_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
     const config = resolveConfig({}, () => STORED_KEY);
     expect(config.apiKey).toBe(STORED_KEY);
   });
@@ -123,10 +124,10 @@ describe('resolveConfig', () => {
 
   it('does not combine an environment key with an unrelated stored endpoint', () => {
     const loadStored = vi.fn(() => ({
-      apiKey: `jn_live_${'z'.repeat(43)}`,
+      apiKey: `kj_live_${'z'.repeat(43)}`,
       apiUrl: 'https://stored.example/functions/v1/mcp-api',
     }));
-    expect(resolveConfig({ JOTNOW_API_KEY: GOOD_KEY }, loadStored)).toEqual({
+    expect(resolveConfig({ KINJOT_API_KEY: GOOD_KEY }, loadStored)).toEqual({
       apiKey: GOOD_KEY,
       apiUrl: DEFAULT_API_URL,
     });
@@ -135,36 +136,36 @@ describe('resolveConfig', () => {
 
   it('lets an explicit endpoint override the endpoint paired with a stored key', () => {
     expect(
-      resolveConfig({ JOTNOW_API_URL: 'https://explicit.example/mcp-api' }, () => ({
+      resolveConfig({ KINJOT_API_URL: 'https://explicit.example/mcp-api' }, () => ({
         apiKey: GOOD_KEY,
         apiUrl: 'https://stored.example/mcp-api',
       })),
     ).toEqual({ apiKey: GOOD_KEY, apiUrl: 'https://explicit.example/mcp-api' });
   });
 
-  it('env unset, malformed stored key: error names the file and suggests `jotnow key`', () => {
-    expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/jotnow key/);
-    expect(() => resolveConfig({}, () => 'jn_live_not_even_close')).toThrow(/config\.json/);
+  it('env unset, malformed stored key: error names the file and suggests `kinjot key`', () => {
+    expect(() => resolveConfig({}, () => 'kj_live_not_even_close')).toThrow(/kinjot key/);
+    expect(() => resolveConfig({}, () => 'kj_live_not_even_close')).toThrow(/config\.json/);
   });
 
   it('env unset, loader throws (corrupt file): the error propagates with the file path intact', () => {
     expect(() =>
       resolveConfig({}, () => {
         throw new Error(
-          '/home/x/.jotnow/config.json is not valid JSON. Run `jotnow key` to recreate it.',
+          '/home/x/.kinjot/config.json is not valid JSON. Run `kinjot key` to recreate it.',
         );
       }),
-    ).toThrow(/\.jotnow\/config\.json/);
+    ).toThrow(/\.kinjot\/config\.json/);
   });
 
   it('none of the no-key / malformed-env / malformed-stored error messages ever contain a key value', () => {
-    const STORED_KEY = `jn_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
-    const badEnvKey = 'jn_live_totally_bogus_env_value';
-    const badStoredKey = 'jn_live_totally_bogus_stored_value';
+    const STORED_KEY = `kj_live_${'z9Y8x7W6v5U4t3S2r1Q0p9O8n7M6l5K4j3I2h1G0f9E8'.slice(0, 43)}`;
+    const badEnvKey = 'kj_live_totally_bogus_env_value';
+    const badStoredKey = 'kj_live_totally_bogus_stored_value';
 
     const cases: Array<() => unknown> = [
       () => resolveConfig({}, () => undefined),
-      () => resolveConfig({ JOTNOW_API_KEY: badEnvKey }, () => STORED_KEY),
+      () => resolveConfig({ KINJOT_API_KEY: badEnvKey }, () => STORED_KEY),
       () => resolveConfig({}, () => badStoredKey),
       () =>
         resolveConfig({}, () => {
@@ -186,33 +187,33 @@ describe('resolveConfig', () => {
   });
 
   it('wires the real default loader for the bare-invocation MCP server path', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'jotnow-cfg-'));
-    const prevDir = process.env.JOTNOW_CONFIG_DIR;
+    const dir = mkdtempSync(join(tmpdir(), 'kinjot-cfg-'));
+    const prevDir = process.env.KINJOT_CONFIG_DIR;
     try {
-      process.env.JOTNOW_CONFIG_DIR = dir;
+      process.env.KINJOT_CONFIG_DIR = dir;
       saveStoredKey(GOOD_KEY, dir);
       // No loadStored override: this exercises the module's real default
-      // loader, same as a bare `jotnow` MCP-server launch with no env key.
+      // loader, same as a bare `kinjot` MCP-server launch with no env key.
       const config = resolveConfig({});
       expect(config.apiKey).toBe(GOOD_KEY);
     } finally {
-      if (prevDir === undefined) delete process.env.JOTNOW_CONFIG_DIR;
-      else process.env.JOTNOW_CONFIG_DIR = prevDir;
+      if (prevDir === undefined) delete process.env.KINJOT_CONFIG_DIR;
+      else process.env.KINJOT_CONFIG_DIR = prevDir;
       rmSync(dir, { recursive: true, force: true });
     }
   });
 
   it('wires the real default loader for a stored endpoint and key pair', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'jotnow-cfg-'));
-    const previous = process.env.JOTNOW_CONFIG_DIR;
+    const dir = mkdtempSync(join(tmpdir(), 'kinjot-cfg-'));
+    const previous = process.env.KINJOT_CONFIG_DIR;
     try {
-      process.env.JOTNOW_CONFIG_DIR = dir;
+      process.env.KINJOT_CONFIG_DIR = dir;
       const apiUrl = 'https://project.supabase.co/functions/v1/mcp-api';
       saveStoredAccount(GOOD_KEY, apiUrl, dir);
       expect(resolveConfig({})).toEqual({ apiKey: GOOD_KEY, apiUrl });
     } finally {
-      if (previous === undefined) delete process.env.JOTNOW_CONFIG_DIR;
-      else process.env.JOTNOW_CONFIG_DIR = previous;
+      if (previous === undefined) delete process.env.KINJOT_CONFIG_DIR;
+      else process.env.KINJOT_CONFIG_DIR = previous;
       rmSync(dir, { recursive: true, force: true });
     }
   });
@@ -411,7 +412,7 @@ describe('NotesApi', () => {
     const api = new NotesApi(config, (async () =>
       jsonResponse(400, { error: 'id required' })) as typeof fetch);
     await expect(api.getNote('A10')).rejects.toThrow(
-      'This Jotnow backend does not support short ids yet; use the 8-character id prefix instead.',
+      'This Kinjot backend does not support short ids yet; use the 8-character id prefix instead.',
     );
   });
 
@@ -530,13 +531,13 @@ describe('cli recall', () => {
     const logSpy = vi
       .spyOn(console, 'log')
       .mockImplementation((...args) => void logs.push(args.join(' ')));
-    const prevKey = process.env.JOTNOW_API_KEY;
-    process.env.JOTNOW_API_KEY = GOOD_KEY;
+    const prevKey = process.env.KINJOT_API_KEY;
+    process.env.KINJOT_API_KEY = GOOD_KEY;
     try {
       await main(['recall', 'kong', 'broken']);
     } finally {
-      if (prevKey === undefined) delete process.env.JOTNOW_API_KEY;
-      else process.env.JOTNOW_API_KEY = prevKey;
+      if (prevKey === undefined) delete process.env.KINJOT_API_KEY;
+      else process.env.KINJOT_API_KEY = prevKey;
       logSpy.mockRestore();
       vi.unstubAllGlobals();
     }
@@ -549,7 +550,7 @@ describe('cli recall', () => {
     expect(logs.join('\n')).toContain(
       'A10  [0.81]  Kong fix  (341233ac-82e5-4f0c-ad95-dceb5b68df47) — db reset breaks kong',
     );
-    expect(logs.join('\n')).toContain('jotnow get <label|id-prefix|uuid>');
+    expect(logs.join('\n')).toContain('kinjot get <label|id-prefix|uuid>');
   });
 
   it('recall command reports an empty result without crashing', async () => {
@@ -560,13 +561,13 @@ describe('cli recall', () => {
     const logSpy = vi
       .spyOn(console, 'log')
       .mockImplementation((...args) => void logs.push(args.join(' ')));
-    const prevKey = process.env.JOTNOW_API_KEY;
-    process.env.JOTNOW_API_KEY = GOOD_KEY;
+    const prevKey = process.env.KINJOT_API_KEY;
+    process.env.KINJOT_API_KEY = GOOD_KEY;
     try {
       await main(['recall', 'nothing here']);
     } finally {
-      if (prevKey === undefined) delete process.env.JOTNOW_API_KEY;
-      else process.env.JOTNOW_API_KEY = prevKey;
+      if (prevKey === undefined) delete process.env.KINJOT_API_KEY;
+      else process.env.KINJOT_API_KEY = prevKey;
       logSpy.mockRestore();
       vi.unstubAllGlobals();
     }
@@ -607,7 +608,7 @@ describe('normalizeTags', () => {
 });
 
 describe('detectRepoTag', () => {
-  const root = mkdtempSync(join(tmpdir(), 'jotnow-repo-'));
+  const root = mkdtempSync(join(tmpdir(), 'kinjot-repo-'));
   afterAll(() => rmSync(root, { recursive: true, force: true }));
 
   it('uses the git toplevel basename from a nested cwd', () => {
@@ -695,7 +696,7 @@ describe('buildServer', () => {
 
   it('jot lists the "save …" phrasings as explicit invocations', () => {
     const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
-    expect(tools.jot!.description).toMatch(/"save it to Jotnow"/);
+    expect(tools.jot!.description).toMatch(/"save it to Kinjot"/);
     expect(tools.jot!.description).toMatch(/"save (it as a|this as a) jot"/);
     expect(tools.jot!.description).toMatch(/"save jot"/);
     expect(tools.jot!.description).toMatch(/bare "jot"/);

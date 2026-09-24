@@ -21,7 +21,7 @@ const DatabaseSync = (
   }
 ).DatabaseSync;
 
-const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
+const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 type RegisteredTool = {
   handler: (
@@ -49,7 +49,7 @@ describe('local mode backend', () => {
   let dbPath: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-backend-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-backend-'));
     ({ dbPath } = makeLibraryFixture(dir));
   });
   afterEach(() => {
@@ -69,13 +69,13 @@ describe('local mode backend', () => {
   });
 
   it('resolveBackend picks the library in local mode and NotesApi in account mode', () => {
-    expect(resolveBackend({ JOTNOW_CONFIG_DIR: dir, JOTNOW_MODE: 'local' }).backend).toBeInstanceOf(
+    expect(resolveBackend({ KINJOT_CONFIG_DIR: dir, KINJOT_MODE: 'local' }).backend).toBeInstanceOf(
       LocalBackend,
     );
     const account = resolveBackend({
-      JOTNOW_CONFIG_DIR: dir,
-      JOTNOW_MODE: 'account',
-      JOTNOW_API_KEY: GOOD_KEY,
+      KINJOT_CONFIG_DIR: dir,
+      KINJOT_MODE: 'account',
+      KINJOT_API_KEY: GOOD_KEY,
     });
     expect(account.backend).toBeInstanceOf(NotesApi);
   });
@@ -121,17 +121,17 @@ describe('local mode backend', () => {
     expect(found.content[0]!.text).not.toContain('LocalModeError');
   });
 
-  it('serve mode resolves per call: row 4 is a tool error, and `jotnow use` needs no restart', async () => {
+  it('serve mode resolves per call: row 4 is a tool error, and `kinjot use` needs no restart', async () => {
     saveStoredKey(GOOD_KEY, dir);
     // Built while the machine is ambiguous — the server itself must come up,
     // because a refusal that prevents startup never shows anyone its message.
     const tools = registeredTools(
-      buildServer(serveBackend({ JOTNOW_CONFIG_DIR: dir }), '0.0.0-test', { repoTag: null }),
+      buildServer(serveBackend({ KINJOT_CONFIG_DIR: dir }), '0.0.0-test', { repoTag: null }),
     );
 
     const refused = await tools.jot!.handler({ title: 'ambiguous', body: 'b' }, {});
     expect(refused.isError).toBe(true);
-    expect(refused.content[0]!.text).toContain('jotnow use account');
+    expect(refused.content[0]!.text).toContain('kinjot use account');
     expect(notesIn(dbPath)).toHaveLength(0);
 
     saveStoredMode('local', dir);
@@ -152,7 +152,7 @@ describe('local mode backend', () => {
     } as unknown as NotesApi;
     saveStoredKey(GOOD_KEY, dir);
     saveStoredMode('account', dir);
-    const backend = serveBackend({ JOTNOW_CONFIG_DIR: dir }, () => fakeApi);
+    const backend = serveBackend({ KINJOT_CONFIG_DIR: dir }, () => fakeApi);
     await backend.saveNote({ title: 'first, to the account', body: '' });
 
     saveStoredMode('local', dir);
@@ -183,7 +183,7 @@ describe('local mode backend', () => {
     const fakeApi = { editNote } as unknown as NotesApi;
     saveStoredKey(GOOD_KEY, dir);
     saveStoredMode('local', dir);
-    const backend = serveBackend({ JOTNOW_CONFIG_DIR: dir }, () => fakeApi);
+    const backend = serveBackend({ KINJOT_CONFIG_DIR: dir }, () => fakeApi);
     await backend.saveNote({ title: 'local jot', body: '' });
     saveStoredMode('account', dir);
     const edit = {
@@ -208,16 +208,16 @@ describe('the CLI, through main()', () => {
   let restoreEnv: () => void;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-cli-mode-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-cli-mode-'));
     ({ dbPath } = makeLibraryFixture(dir));
     logs = [];
     errors = [];
     vi.spyOn(console, 'log').mockImplementation((...args) => void logs.push(args.join(' ')));
     vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args.join(' ')));
     const previous = { ...process.env };
-    process.env.JOTNOW_CONFIG_DIR = dir;
-    delete process.env.JOTNOW_API_KEY;
-    delete process.env.JOTNOW_MODE;
+    process.env.KINJOT_CONFIG_DIR = dir;
+    delete process.env.KINJOT_API_KEY;
+    delete process.env.KINJOT_MODE;
     restoreEnv = () => {
       for (const key of Object.keys(process.env)) delete process.env[key];
       Object.assign(process.env, previous);
@@ -231,7 +231,7 @@ describe('the CLI, through main()', () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('`jotnow add` writes to the local library when it is the only option', async () => {
+  it('`kinjot add` writes to the local library when it is the only option', async () => {
     const { main } = await import('./cli.js');
     await main(['add', 'a local jot', '--body', 'hello']);
     expect(process.exitCode).toBeUndefined();
@@ -239,7 +239,7 @@ describe('the CLI, through main()', () => {
     expect(logs.join('\n')).toContain('Jotted "a local jot"');
   });
 
-  it('`jotnow add` echoes the title through terminalSafe — a jot cannot smuggle ANSI into the terminal', async () => {
+  it('`kinjot add` echoes the title through terminalSafe — a jot cannot smuggle ANSI into the terminal', async () => {
     // The title is agent-written in the MCP flow and server-round-tripped in
     // account mode, so the echo is untrusted like every other printed note
     // field (printHit, get, recall). The escapes must be stripped from the
@@ -257,7 +257,7 @@ describe('the CLI, through main()', () => {
     expect(echoed).not.toContain('\u009b');
   });
 
-  it('`jotnow where` sanitizes pointer-derived strings — a crafted db_path cannot smuggle ANSI', async () => {
+  it('`kinjot where` sanitizes pointer-derived strings — a crafted db_path cannot smuggle ANSI', async () => {
     // The pointer file is file-controlled input; its db_path is interpolated
     // into `where` output and every LocalModeError. `where` is the command
     // run when things are already broken — exactly when the pointer is most
@@ -281,14 +281,14 @@ describe('the CLI, through main()', () => {
     expect(output).not.toContain('\u009b');
   });
 
-  it('`jotnow search` in local mode points at the desktop app instead of half-answering', async () => {
+  it('`kinjot search` in local mode points at the desktop app instead of half-answering', async () => {
     const { main } = await import('./cli.js');
     await main(['search', 'kong']);
     expect(process.exitCode).toBe(1);
     expect(errors.join('\n')).toMatch(/search is not available in local mode/);
   });
 
-  it('a stored key plus a local library and no mode refuses, naming `jotnow use account`', async () => {
+  it('a stored key plus a local library and no mode refuses, naming `kinjot use account`', async () => {
     saveStoredKey(GOOD_KEY, dir);
     const fetchMock = vi.fn(() => {
       throw new Error('nothing may be sent to the server');
@@ -301,12 +301,12 @@ describe('the CLI, through main()', () => {
       vi.unstubAllGlobals();
     }
     expect(process.exitCode).toBe(1);
-    expect(errors.join('\n')).toContain('jotnow use account');
+    expect(errors.join('\n')).toContain('kinjot use account');
     expect(fetchMock).not.toHaveBeenCalled();
     expect(notesIn(dbPath)).toHaveLength(0);
   });
 
-  it('`jotnow use local` records the choice and unblocks the ambiguous machine', async () => {
+  it('`kinjot use local` records the choice and unblocks the ambiguous machine', async () => {
     saveStoredKey(GOOD_KEY, dir);
     const { main } = await import('./cli.js');
     await main(['use', 'local']);
@@ -321,7 +321,7 @@ describe('the CLI, through main()', () => {
     expect(notesIn(dbPath).map((note) => note.title)).toEqual(['after choosing']);
   });
 
-  it('`jotnow where` names the target library, its identity, and the rung that decided', async () => {
+  it('`kinjot where` names the target library, its identity, and the rung that decided', async () => {
     const { main } = await import('./cli.js');
     await main(['where']);
     const output = logs.join('\n');
@@ -332,15 +332,15 @@ describe('the CLI, through main()', () => {
     expect(process.exitCode).toBeUndefined();
   });
 
-  it('`jotnow where` explains an ambiguous machine rather than raising', async () => {
+  it('`kinjot where` explains an ambiguous machine rather than raising', async () => {
     saveStoredKey(GOOD_KEY, dir);
     const { main } = await import('./cli.js');
     await main(['where']);
-    expect(logs.join('\n')).toContain('jotnow use account');
+    expect(logs.join('\n')).toContain('kinjot use account');
     expect(process.exitCode).toBe(1);
   });
 
-  it('`jotnow where` reports a dangling library without pretending the server is the target', async () => {
+  it('`kinjot where` reports a dangling library without pretending the server is the target', async () => {
     rmSync(join(dir, 'local'), { recursive: true, force: true });
     const { main } = await import('./cli.js');
     await main(['where']);

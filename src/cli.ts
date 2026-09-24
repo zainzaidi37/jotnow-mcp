@@ -13,7 +13,7 @@ import {
   saveStoredAccount,
   saveStoredKey,
   saveStoredMode,
-  type JotnowMode,
+  type KinjotMode,
 } from './configFile.js';
 import { openLocalLibrary } from './local/library.js';
 import { pointerExists, pointerPath } from './local/pointer.js';
@@ -35,44 +35,44 @@ export const VERSION: string = (
   createRequire(import.meta.url)('../package.json') as { version: string }
 ).version;
 
-export const HELP = `jotnow — jot and find notes from the terminal
+export const HELP = `Kinjot — jot and find notes from the terminal
 
-For terminal use anywhere: npm i -g jotnow, then jotnow key
+For terminal use anywhere: npm i -g kinjot, then kinjot key
 
 Usage:
-  jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>]
+  kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>]
                                  (body is read from stdin when piped)
-  jotnow search <query>
-  jotnow recall <query>          semantic search by meaning (Pro plan)
-  jotnow get <label|id-prefix|uuid>
-  jotnow append <label|id-prefix|uuid> [--text <text>]
+  kinjot search <query>
+  kinjot recall <query>          semantic search by meaning (Pro plan)
+  kinjot get <label|id-prefix|uuid>
+  kinjot append <label|id-prefix|uuid> [--text <text>]
                                  (text is read from stdin when piped)
-  jotnow recent [n]
-  jotnow                         run the MCP server on stdio (for MCP configs)
-  jotnow init --key jn_live_... [--api-url <url>]
+  kinjot recent [n]
+  kinjot                         run the MCP server on stdio (for MCP configs)
+  kinjot init --key kj_live_... [--api-url <url>]
                                  validate a key and print the MCP config block
-  jotnow init-selfhost [--api-url <url>] [--key jn_live_...]
+  kinjot init-selfhost [--api-url <url>] [--key kj_live_...]
                                  connect to your own Supabase project
-  jotnow key [--api-url <url>]
+  kinjot key [--api-url <url>]
                                  store your API key for this machine (input hidden)
-  jotnow use local|account       choose where jots are written on this machine
-  jotnow where                   show which library jots go to, and why
-  jotnow help                    print this help (also --help, -h)
-  jotnow --version               print the installed version (also -v, version)
+  kinjot use local|account       choose where jots are written on this machine
+  kinjot where                   show which library jots go to, and why
+  kinjot help                    print this help (also --help, -h)
+  kinjot --version               print the installed version (also -v, version)
 
 Environment:
-  JOTNOW_API_KEY   API key from the web app (Settings → API keys); overrides
-                   any key stored by \`jotnow key\`
-  JOTNOW_API_URL   override the API endpoint (defaults to production)
-  JOTNOW_MODE      local|account for a single command; overrides \`jotnow use\`
+  KINJOT_API_KEY   API key from the web app (Settings → API keys); overrides
+                   any key stored by \`kinjot key\`
+  KINJOT_API_URL   override the API endpoint (defaults to production)
+  KINJOT_MODE      local|account for a single command; overrides \`kinjot use\`
 
-A key stored by \`jotnow key\` lives in ~/.jotnow/config.json (or
-JOTNOW_CONFIG_DIR if set) and is used automatically when JOTNOW_API_KEY is
+A key stored by \`kinjot key\` lives in ~/.kinjot/config.json (or
+KINJOT_CONFIG_DIR if set) and is used automatically when KINJOT_API_KEY is
 unset.
 
-Local mode writes to the Jotnow desktop app's local library instead of your
+Local mode writes to the Kinjot desktop app's local library instead of your
 account. It needs the desktop app (which creates that library), and only
-\`jotnow add\` and the MCP jot tool work there — search, recall, get and recent
+\`kinjot add\` and the MCP jot tool work there — search, recall, get and recent
 live in the app.
 `;
 
@@ -106,7 +106,7 @@ function shellQuote(value: string): string {
 function selectedApiUrl(flags: ReadonlyMap<string, string>, env: NodeJS.ProcessEnv): string {
   const apiUrlFlag = flags.get('api-url');
   const apiUrl =
-    apiUrlFlag === undefined ? env.JOTNOW_API_URL?.trim() || DEFAULT_API_URL : apiUrlFlag.trim();
+    apiUrlFlag === undefined ? env.KINJOT_API_URL?.trim() || DEFAULT_API_URL : apiUrlFlag.trim();
   if (apiUrl === '') throw new Error('--api-url needs a non-empty URL');
   return normalizeDefaultApiUrl(apiUrl);
 }
@@ -170,7 +170,7 @@ function printSearch({ notes, total }: SearchResult, query: string): void {
   if (total > notes.length) {
     console.log(`Showing ${notes.length} of ${total} matches — refine the query for others.`);
   }
-  console.log(`Read one with: jotnow get <label|id-prefix|uuid>`);
+  console.log(`Read one with: kinjot get <label|id-prefix|uuid>`);
 }
 
 // Recall candidates lead with the same handle as other listings and keep the
@@ -186,17 +186,17 @@ function printRecall(matches: RecallMatch[], query: string): void {
     return;
   }
   matches.forEach((match) => console.log(formatRecallHit(match)));
-  console.log(`Read one with: jotnow get <label|id-prefix|uuid>`);
+  console.log(`Read one with: kinjot get <label|id-prefix|uuid>`);
 }
 
 async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Promise<void> {
   rejectUnknownFlags(flags, ['key', 'api-url']);
-  const key = flags.get('key') ?? env.JOTNOW_API_KEY ?? '';
+  const key = flags.get('key') ?? env.KINJOT_API_KEY ?? '';
   if (!API_KEY_PATTERN.test(key)) {
     throw new Error(
       key === ''
-        ? 'pass your API key: npx jotnow init --key jn_live_... (create one in Settings → API keys)'
-        : 'that key does not look like a Jotnow key (expected jn_live_ + 43 characters)',
+        ? 'pass your API key: npx kinjot init --key kj_live_... (create one in Settings → API keys)'
+        : 'that key does not look like a Kinjot key (expected kj_live_ + 43 characters)',
     );
   }
   const apiUrl = selectedApiUrl(flags, env);
@@ -206,28 +206,28 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
   await api.listRecentNotes(1);
   console.log('ok ✔\n');
 
-  const envBlock: Record<string, string> = { JOTNOW_API_KEY: key };
-  if (apiUrl !== DEFAULT_API_URL) envBlock.JOTNOW_API_URL = apiUrl;
+  const envBlock: Record<string, string> = { KINJOT_API_KEY: key };
+  if (apiUrl !== DEFAULT_API_URL) envBlock.KINJOT_API_URL = apiUrl;
   const mcpConfig = {
     mcpServers: {
-      jotnow: { command: 'npx', args: ['-y', 'jotnow'], env: envBlock },
+      kinjot: { command: 'npx', args: ['-y', 'kinjot'], env: envBlock },
     },
   };
 
   console.log('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n');
   console.log(JSON.stringify(mcpConfig, null, 2));
-  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e KINJOT_API_URL=${shellQuote(apiUrl)}`;
   const codexApiUrl =
-    apiUrl === DEFAULT_API_URL ? '' : ` --env JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+    apiUrl === DEFAULT_API_URL ? '' : ` --env KINJOT_API_URL=${shellQuote(apiUrl)}`;
   console.log('\nOr with the Claude Code CLI:\n');
-  console.log(`claude mcp add jotnow -e JOTNOW_API_KEY=${key}${claudeApiUrl} -- npx -y jotnow`);
+  console.log(`claude mcp add kinjot -e KINJOT_API_KEY=${key}${claudeApiUrl} -- npx -y kinjot`);
   console.log('\nOr with the Codex CLI:\n');
-  console.log(`codex mcp add jotnow --env JOTNOW_API_KEY=${key}${codexApiUrl} -- npx -y jotnow`);
+  console.log(`codex mcp add kinjot --env KINJOT_API_KEY=${key}${codexApiUrl} -- npx -y kinjot`);
   console.log('\nThen tell your agent to "jot that down" — done.');
   console.log(
     apiUrl === DEFAULT_API_URL
-      ? '\nTip: `jotnow key` stores the key once for all terminals and MCP configs — no env block needed.'
-      : '\nTip: `jotnow key --api-url <url>` stores the validated key and custom endpoint together.',
+      ? '\nTip: `kinjot key` stores the key once for all terminals and MCP configs — no env block needed.'
+      : '\nTip: `kinjot key --api-url <url>` stores the validated key and custom endpoint together.',
   );
 }
 
@@ -285,7 +285,7 @@ function readTtySetup(
         output.write('\n');
         if (needKey) {
           phase = 'key';
-          output.write('Paste your Jotnow API key (input hidden): ');
+          output.write('Paste your Kinjot API key (input hidden): ');
         } else {
           finish();
         }
@@ -338,7 +338,7 @@ function readTtySetup(
     };
 
     output.write(
-      needProject ? 'Supabase project ref or URL: ' : 'Paste your Jotnow API key (input hidden): ',
+      needProject ? 'Supabase project ref or URL: ' : 'Paste your Kinjot API key (input hidden): ',
     );
     input.setRawMode?.(true);
     input.resume?.();
@@ -357,14 +357,14 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
   const input = deps.input ?? (process.stdin as unknown as ReadHiddenLineOptions['input']);
   const isTTY = deps.isTTY ?? Boolean((input as unknown as { isTTY?: boolean }).isTTY);
   const needsProjectInput =
-    !flags.has('api-url') && !env.JOTNOW_API_URL?.trim() && !deps.readProject;
-  const suppliedKey = flags.get('key') ?? env.JOTNOW_API_KEY?.trim();
+    !flags.has('api-url') && !env.KINJOT_API_URL?.trim() && !deps.readProject;
+  const suppliedKey = flags.get('key') ?? env.KINJOT_API_KEY?.trim();
   const needsKeyInput = !suppliedKey && !deps.readHidden;
   let piped: string[] | undefined;
   if (
     !isTTY &&
-    ((!flags.has('api-url') && !env.JOTNOW_API_URL?.trim() && !deps.readProject) ||
-      (!flags.has('key') && !env.JOTNOW_API_KEY?.trim() && !deps.readHidden))
+    ((!flags.has('api-url') && !env.KINJOT_API_URL?.trim() && !deps.readProject) ||
+      (!flags.has('key') && !env.KINJOT_API_KEY?.trim() && !deps.readHidden))
   ) {
     piped = await readPipedLines(input);
   }
@@ -374,7 +374,7 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
       : undefined;
 
   let apiUrl: string;
-  if (flags.has('api-url') || env.JOTNOW_API_URL?.trim()) {
+  if (flags.has('api-url') || env.KINJOT_API_URL?.trim()) {
     apiUrl = selectedApiUrl(flags, env);
   } else {
     const project = deps.readProject
@@ -392,10 +392,10 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
       ? await deps.readHidden()
       : isTTY
         ? (ttyAnswers?.key ?? '')
-        : (stdout.write('Paste your Jotnow API key (input hidden): \n'), piped?.shift() ?? ''));
+        : (stdout.write('Paste your Kinjot API key (input hidden): \n'), piped?.shift() ?? ''));
   if (!API_KEY_PATTERN.test(key)) {
     throw new Error(
-      'that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.',
+      'that does not look like a Kinjot key (expected kj_live_ + 43 characters) — nothing was saved.',
     );
   }
 
@@ -404,29 +404,29 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
   await api.listRecentNotes(1);
   stdout.write('ok ✔\n');
   saveStoredAccount(key, apiUrl, configDir(env));
-  stdout.write('Saved — jotnow will use this self-hosted project automatically.\n\n');
-  if (env.JOTNOW_API_KEY?.trim() || env.JOTNOW_API_URL?.trim()) {
+  stdout.write('Saved — Kinjot will use this self-hosted project automatically.\n\n');
+  if (env.KINJOT_API_KEY?.trim() || env.KINJOT_API_URL?.trim()) {
     (deps.stderr ?? process.stderr).write(
-      'warning: JOTNOW_API_KEY or JOTNOW_API_URL is set in your environment; environment values override the saved self-host configuration.\n',
+      'warning: KINJOT_API_KEY or KINJOT_API_URL is set in your environment; environment values override the saved self-host configuration.\n',
     );
   }
   stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
-  const envBlock = { JOTNOW_API_KEY: key, JOTNOW_API_URL: apiUrl };
+  const envBlock = { KINJOT_API_KEY: key, KINJOT_API_URL: apiUrl };
   stdout.write(
-    `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'], env: envBlock } } }, null, 2)}\n`,
+    `${JSON.stringify({ mcpServers: { kinjot: { command: 'npx', args: ['-y', 'kinjot'], env: envBlock } } }, null, 2)}\n`,
   );
   stdout.write('\nOr with the Claude Code CLI:\n\n');
   stdout.write(
-    `claude mcp add jotnow -e JOTNOW_API_KEY=${key} -e JOTNOW_API_URL=${shellQuote(apiUrl)} -- npx -y jotnow\n`,
+    `claude mcp add kinjot -e KINJOT_API_KEY=${key} -e KINJOT_API_URL=${shellQuote(apiUrl)} -- npx -y kinjot\n`,
   );
   stdout.write('\nOr with the Codex CLI:\n\n');
   stdout.write(
-    `codex mcp add jotnow --env JOTNOW_API_KEY=${key} --env JOTNOW_API_URL=${shellQuote(apiUrl)} -- npx -y jotnow\n`,
+    `codex mcp add kinjot --env KINJOT_API_KEY=${key} --env KINJOT_API_URL=${shellQuote(apiUrl)} -- npx -y kinjot\n`,
   );
 }
 
 /**
- * `jotnow use local|account` — §5.4's persisted rung.
+ * `kinjot use local|account` — §5.4's persisted rung.
  *
  * Writes `mode` into the existing config. Mode-only and hosted configs remain
  * v1; an existing fail-closed endpoint/key pair remains v2.
@@ -434,27 +434,27 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
 function runUse(positional: string[], env: NodeJS.ProcessEnv): void {
   const wanted = positional[0];
   if (wanted !== 'local' && wanted !== 'account') {
-    throw new Error('usage: jotnow use local|account');
+    throw new Error('usage: kinjot use local|account');
   }
-  const mode: JotnowMode = wanted;
+  const mode: KinjotMode = wanted;
   const dir = configDir(env);
   saveStoredMode(mode, dir);
   console.log(
     mode === 'local'
-      ? "Saved — jots from this machine now go to the desktop app's local library. Run `jotnow where` to see which file."
-      : 'Saved — jots from this machine now go to your Jotnow account.',
+      ? "Saved — jots from this machine now go to the desktop app's local library. Run `kinjot where` to see which file."
+      : 'Saved — jots from this machine now go to your Kinjot account.',
   );
   if (mode === 'local' && !pointerExists(dir)) {
     // The choice is recorded either way — the pointer appears on the next
     // desktop launch — but saying "Saved" alone would read as "working".
     console.log(
-      'Note: no local library exists here yet — run the Jotnow desktop app once to create it.',
+      'Note: no local library exists here yet — run the Kinjot desktop app once to create it.',
     );
   }
 }
 
 /**
- * `jotnow where` — required by §5.4, because mode selection that cannot be
+ * `kinjot where` — required by §5.4, because mode selection that cannot be
  * inspected gets mis-diagnosed as data loss.
  *
  * It prints the resolved target *and* the rung that decided, and it reports
@@ -539,7 +539,7 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
         input,
         output: deps.output ?? stdout,
         isTTY: deps.isTTY ?? Boolean((input as unknown as { isTTY?: boolean }).isTTY),
-        prompt: 'Paste your Jotnow API key (input hidden): ',
+        prompt: 'Paste your Kinjot API key (input hidden): ',
       });
     });
 
@@ -547,7 +547,7 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
   const key = await readHidden();
   if (!API_KEY_PATTERN.test(key)) {
     throw new Error(
-      'that does not look like a Jotnow key (expected jn_live_ + 43 characters) — nothing was saved.',
+      'that does not look like a Kinjot key (expected kj_live_ + 43 characters) — nothing was saved.',
     );
   }
 
@@ -561,29 +561,29 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
   if (apiUrl === DEFAULT_API_URL) saveStoredKey(key, configDir(env));
   else saveStoredAccount(key, apiUrl, configDir(env));
 
-  if (env.JOTNOW_API_KEY?.trim()) {
+  if (env.KINJOT_API_KEY?.trim()) {
     stderr.write(
-      'warning: JOTNOW_API_KEY is set in your environment; it will override the stored key until you unset it.\n',
+      'warning: KINJOT_API_KEY is set in your environment; it will override the stored key until you unset it.\n',
     );
   }
 
   stdout.write(
     apiUrl === DEFAULT_API_URL
-      ? 'Saved — jotnow will use this key automatically from now on, no env var needed.\n\n'
-      : 'Saved — jotnow will use this key and custom endpoint automatically.\n\n',
+      ? 'Saved — Kinjot will use this key automatically from now on, no env var needed.\n\n'
+      : 'Saved — Kinjot will use this key and custom endpoint automatically.\n\n',
   );
   stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
-  const envBlock = apiUrl === DEFAULT_API_URL ? undefined : { JOTNOW_API_URL: apiUrl };
+  const envBlock = apiUrl === DEFAULT_API_URL ? undefined : { KINJOT_API_URL: apiUrl };
   stdout.write(
-    `${JSON.stringify({ mcpServers: { jotnow: { command: 'npx', args: ['-y', 'jotnow'], ...(envBlock ? { env: envBlock } : {}) } } }, null, 2)}\n`,
+    `${JSON.stringify({ mcpServers: { kinjot: { command: 'npx', args: ['-y', 'kinjot'], ...(envBlock ? { env: envBlock } : {}) } } }, null, 2)}\n`,
   );
-  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e KINJOT_API_URL=${shellQuote(apiUrl)}`;
   const codexApiUrl =
-    apiUrl === DEFAULT_API_URL ? '' : ` --env JOTNOW_API_URL=${shellQuote(apiUrl)}`;
+    apiUrl === DEFAULT_API_URL ? '' : ` --env KINJOT_API_URL=${shellQuote(apiUrl)}`;
   stdout.write('\nOr with the Claude Code CLI:\n\n');
-  stdout.write(`claude mcp add jotnow${claudeApiUrl} -- npx -y jotnow\n`);
+  stdout.write(`claude mcp add kinjot${claudeApiUrl} -- npx -y kinjot\n`);
   stdout.write('\nOr with the Codex CLI:\n\n');
-  stdout.write(`codex mcp add jotnow${codexApiUrl} -- npx -y jotnow\n`);
+  stdout.write(`codex mcp add kinjot${codexApiUrl} -- npx -y kinjot\n`);
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
@@ -634,7 +634,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         const title = positional[0];
         if (!title)
           throw new Error(
-            'usage: jotnow add <title> [--body <text>] [--tags a,b] [--folder <name>] (body is read from stdin when piped)',
+            'usage: kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>] (body is read from stdin when piped)',
           );
         const body = flags.get('body') ?? (process.stdin.isTTY ? '' : await readStdin());
         const api = resolveBackend(process.env).backend;
@@ -656,7 +656,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         rejectUnknownFlags(flags, ['text']);
         const id = positional[0];
         if (!id || positional.length !== 1)
-          throw new Error('usage: jotnow append <label|id-prefix|uuid> [--text <text>]');
+          throw new Error('usage: kinjot append <label|id-prefix|uuid> [--text <text>]');
         const text = flags.get('text') ?? (process.stdin.isTTY ? '' : await readStdin());
         if (!text) throw new Error('append text must be non-empty');
         const note = await resolveBackend(process.env).backend.appendNote({
@@ -669,19 +669,19 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       }
       case 'search': {
         const query = positional.join(' ').trim();
-        if (!query) throw new Error('usage: jotnow search <query>');
+        if (!query) throw new Error('usage: kinjot search <query>');
         printSearch(await resolveBackend(process.env).backend.searchNotes(query), query);
         return;
       }
       case 'recall': {
         const query = positional.join(' ').trim();
-        if (!query) throw new Error('usage: jotnow recall <query>');
+        if (!query) throw new Error('usage: kinjot recall <query>');
         printRecall(await resolveBackend(process.env).backend.recallNotes(query), query);
         return;
       }
       case 'get': {
         const id = positional[0];
-        if (!id) throw new Error('usage: jotnow get <label|id-prefix|uuid>');
+        if (!id) throw new Error('usage: kinjot get <label|id-prefix|uuid>');
         const note = await resolveBackend(process.env).backend.getNote(id);
         const tags = note.tags.map(terminalSafe).join(', ') || 'none';
         console.log(
@@ -693,7 +693,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       }
       case 'recent': {
         const limit = positional[0] ? Number.parseInt(positional[0], 10) : 10;
-        if (Number.isNaN(limit)) throw new Error('usage: jotnow recent [n]');
+        if (Number.isNaN(limit)) throw new Error('usage: kinjot recent [n]');
         (await resolveBackend(process.env).backend.listRecentNotes(limit)).forEach(printHit);
         return;
       }
@@ -710,7 +710,7 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         console.log(VERSION);
         return;
       default:
-        throw new Error(`unknown command "${command}" — run jotnow help`);
+        throw new Error(`unknown command "${command}" — run kinjot help`);
     }
   } catch (error) {
     const message =

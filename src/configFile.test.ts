@@ -1,4 +1,13 @@
-import { chmodSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
@@ -12,7 +21,7 @@ import {
   saveStoredMode,
 } from './configFile.js';
 
-const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
+const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 // chmod calls we make are our own code path (not OS enforcement), so they run
 // identically as root; only skip on win32 where perms don't apply at all.
@@ -22,7 +31,7 @@ describe('configFile', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-cfg-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-cfg-'));
   });
 
   afterEach(() => {
@@ -83,7 +92,10 @@ describe('configFile', () => {
 
   it('rejects an endpoint in v1 and an unpaired endpoint config in v2', () => {
     const file = configFilePath(dir);
-    writeFileSync(file, JSON.stringify({ version: 1, apiKey: GOOD_KEY, apiUrl: 'https://wrong.test' }));
+    writeFileSync(
+      file,
+      JSON.stringify({ version: 1, apiKey: GOOD_KEY, apiUrl: 'https://wrong.test' }),
+    );
     expect(() => loadStoredConfig(dir)).toThrow(/unexpected shape/);
     writeFileSync(file, JSON.stringify({ version: 2, apiUrl: 'https://wrong.test' }));
     expect(() => loadStoredConfig(dir)).toThrow(/unexpected shape/);
@@ -93,7 +105,7 @@ describe('configFile', () => {
     const file = configFilePath(dir);
     writeFileSync(file, '{ not valid json');
     expect(() => loadStoredKey(dir)).toThrow(file);
-    expect(() => loadStoredKey(dir)).toThrow(/jotnow key/);
+    expect(() => loadStoredKey(dir)).toThrow(/kinjot key/);
   });
 
   it('throws naming the file path when the shape is wrong', () => {
@@ -102,8 +114,8 @@ describe('configFile', () => {
     expect(() => loadStoredKey(dir)).toThrow(file);
   });
 
-  it('`jotnow key` over a corrupt file recreates it — it is the documented repair path', () => {
-    // The corrupt-file error says "Run `jotnow key` to recreate it", so the
+  it('`kinjot key` over a corrupt file recreates it — it is the documented repair path', () => {
+    // The corrupt-file error says "Run `kinjot key` to recreate it", so the
     // write commands must never be blocked by the state they exist to repair.
     const file = configFilePath(dir);
     writeFileSync(file, '{ not valid json');
@@ -144,11 +156,11 @@ describe('configFile', () => {
     expect(stderrWrites).toEqual([]);
   });
 
-  it('configDir honors the JOTNOW_CONFIG_DIR override', () => {
-    expect(configDir({ JOTNOW_CONFIG_DIR: '/custom/path' })).toBe('/custom/path');
+  it('configDir honors the KINJOT_CONFIG_DIR override', () => {
+    expect(configDir({ KINJOT_CONFIG_DIR: '/custom/path' })).toBe('/custom/path');
   });
 
-  it('configDir defaults to ~/.jotnow (not XDG, not %APPDATA%)', () => {
-    expect(configDir({})).toBe(join(homedir(), '.jotnow'));
+  it('configDir defaults to ~/.kinjot (not XDG, not %APPDATA%)', () => {
+    expect(configDir({})).toBe(join(homedir(), '.kinjot'));
   });
 });

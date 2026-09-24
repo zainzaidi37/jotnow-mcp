@@ -1,10 +1,10 @@
 <!-- @generated — DO NOT EDIT. -->
 
-# Vendored `@jotnow/core`
+# Vendored `@kinjot/core`
 
 Every file in this directory is a generated copy of a module from
-`packages/core/src` in the private jotnow repository, emitted by
-`pnpm --filter @jotnow/core emit:mcp-core` and checked in so that
+`packages/core/src` in the private kinjot repository, emitted by
+`pnpm --filter @kinjot/core emit:mcp-core` and checked in so that
 `packages/mcp` stays a self-contained, publishable package with no workspace
 dependency. CI re-runs the generator and fails on any difference, so editing
 anything here is always the wrong fix: change the source module instead.

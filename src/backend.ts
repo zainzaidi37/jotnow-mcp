@@ -1,6 +1,6 @@
 // One resolver, both surfaces (plans/desktop-app.md §5.4): the CLI commands and
 // the MCP server tools choose their target the same way, because a rule that
-// holds for `jotnow add` and not for the `jot` tool is a rule that ships jots
+// holds for `kinjot add` and not for the `jot` tool is a rule that ships jots
 // to the wrong place from inside an agent session.
 
 import { NotesApi } from './api.js';
@@ -44,8 +44,8 @@ export interface JotBackend {
  */
 function notInLocalMode(what: string): LocalModeError {
   return new LocalModeError(
-    `${what} is not available in local mode — open the jotnow desktop app to browse, search ` +
-      `and recall your local library. (\`jotnow add\` writes to it; \`jotnow where\` shows ` +
+    `${what} is not available in local mode — open the Kinjot desktop app to browse, search ` +
+      `and recall your local library. (\`kinjot add\` writes to it; \`kinjot where\` shows ` +
       `which library that is.)`,
   );
 }
@@ -107,12 +107,12 @@ export class LocalBackend implements JotBackend {
  * The serve path's backend: re-resolves the mode on **every tool call**.
  *
  * The MCP server is long-lived and §5.4 is a per-invocation rule, so resolving
- * once at startup gets both failure shapes wrong. `jotnow use` would be frozen
+ * once at startup gets both failure shapes wrong. `kinjot use` would be frozen
  * until the host restarts the server. And row 4 — armed for every stored-key
  * user the moment they run the desktop app once (PR A) — would become a server
  * that fails to *start*, which is the one place its refusal (whose entire
  * justification is being actionable) cannot reach the agent. Per call, it
- * arrives as a tool error naming `jotnow use account`, and the agent relays it.
+ * arrives as a tool error naming `kinjot use account`, and the agent relays it.
  *
  * The account path moves with it: a missing key errors on the first tool call
  * now, instead of at startup — the same sentence, somewhere a person sees it.

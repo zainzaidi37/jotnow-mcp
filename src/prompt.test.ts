@@ -26,11 +26,11 @@ describe('readHiddenLine (TTY path)', () => {
     const output = fakeOutput();
     const promise = readHiddenLine({ input, output, isTTY: true, prompt: 'P: ' });
 
-    input.emit('data', Buffer.from('jn_'));
+    input.emit('data', Buffer.from('kj_'));
     input.emit('data', Buffer.from('live_abc'));
     input.emit('data', Buffer.from('\r'));
 
-    await expect(promise).resolves.toBe('jn_live_abc');
+    await expect(promise).resolves.toBe('kj_live_abc');
     expect(input.setRawMode).toHaveBeenNthCalledWith(1, true);
     expect(input.setRawMode).toHaveBeenNthCalledWith(2, false);
   });
@@ -54,9 +54,9 @@ describe('readHiddenLine (TTY path)', () => {
     const output = fakeOutput();
     const promise = readHiddenLine({ input, output, isTTY: true, prompt: 'P: ' });
 
-    input.emit('data', Buffer.from('jn_live_pasted_whole_chunk\n'));
+    input.emit('data', Buffer.from('kj_live_pasted_whole_chunk\n'));
 
-    await expect(promise).resolves.toBe('jn_live_pasted_whole_chunk');
+    await expect(promise).resolves.toBe('kj_live_pasted_whole_chunk');
   });
 
   it('backspace (\\x7f) removes the last buffered character', async () => {
@@ -119,7 +119,7 @@ describe('readHiddenLine (TTY path)', () => {
     const promise = readHiddenLine({ input, output, isTTY: true, prompt: 'P: ' });
 
     // A bracketed-paste-wrapped value, terminated with \r.
-    const raw = '\x1b[200~jn_live_abc\x1b[201~';
+    const raw = '\x1b[200~kj_live_abc\x1b[201~';
     input.emit('data', Buffer.from(raw));
     input.emit('data', Buffer.from('\r'));
 
@@ -134,9 +134,9 @@ describe('readHiddenLine (non-TTY / piped path)', () => {
     const output = fakeOutput();
     const promise = readHiddenLine({ input, output, isTTY: false, prompt: 'P: ' });
 
-    input.emit('data', Buffer.from('jn_live_piped_key\n'));
+    input.emit('data', Buffer.from('kj_live_piped_key\n'));
 
-    await expect(promise).resolves.toBe('jn_live_piped_key');
+    await expect(promise).resolves.toBe('kj_live_piped_key');
     expect(input.setRawMode).not.toHaveBeenCalled();
   });
 
@@ -145,10 +145,10 @@ describe('readHiddenLine (non-TTY / piped path)', () => {
     const output = fakeOutput();
     const promise = readHiddenLine({ input, output, isTTY: false, prompt: 'P: ' });
 
-    input.emit('data', Buffer.from('jn_live_no_newline'));
+    input.emit('data', Buffer.from('kj_live_no_newline'));
     input.emit('end');
 
-    await expect(promise).resolves.toBe('jn_live_no_newline');
+    await expect(promise).resolves.toBe('kj_live_no_newline');
     expect(input.setRawMode).not.toHaveBeenCalled();
   });
 });

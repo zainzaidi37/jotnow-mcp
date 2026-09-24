@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { pointerPath, readPointer, POINTER_VERSION } from './pointer.js';
 
 /**
- * The CLI's half of `~/.jotnow/local-library.json`, against the **app's** bytes.
+ * The CLI's half of `~/.kinjot/local-library.json`, against the **app's** bytes.
  *
  * Until this file existed, every test of this reader read a pointer the CLI's
  * own fixture had written (`library-fixture.ts`), so the Rust writer and the TS
@@ -38,7 +38,7 @@ const GOLDEN = readFileSync(FIXTURE, 'utf8');
 
 /** A config root holding `contents` as its pointer file. */
 function rootWith(contents: string): string {
-  const dir = mkdtempSync(join(tmpdir(), 'jotnow-pointer-'));
+  const dir = mkdtempSync(join(tmpdir(), 'kinjot-pointer-'));
   writeFileSync(pointerPath(dir), contents);
   return dir;
 }
@@ -71,7 +71,7 @@ describe('the shared pointer fixture', () => {
     // parser, no fixture of the CLI's own in between.
     expect(readPointer(rootWith(GOLDEN))).toEqual({
       version: POINTER_VERSION,
-      db_path: '/home/example/.jotnow/local/library.db',
+      db_path: '/home/example/.kinjot/local/library.db',
       workspace_uuid: '6f8a1c3e-1d2b-4a5c-9e7f-0b1c2d3e4f50',
       schema_version: 2,
     });
@@ -86,7 +86,7 @@ describe('readPointer refuses a pointer it cannot trust', () => {
   // message, not just the throw.
 
   it('says to run the desktop app when there is no pointer at all', () => {
-    const dir = mkdtempSync(join(tmpdir(), 'jotnow-pointer-'));
+    const dir = mkdtempSync(join(tmpdir(), 'kinjot-pointer-'));
     expect(() => readPointer(dir)).toThrow(/local capture requires the desktop app/);
   });
 

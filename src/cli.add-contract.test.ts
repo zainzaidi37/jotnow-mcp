@@ -18,10 +18,10 @@ describe('cli.add-contract', () => {
   let errors: string[];
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-add-contract-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-add-contract-'));
     ({ dbPath } = makeLibraryFixture(dir));
-    vi.stubEnv('JOTNOW_CONFIG_DIR', dir);
-    vi.stubEnv('JOTNOW_MODE', 'local');
+    vi.stubEnv('KINJOT_CONFIG_DIR', dir);
+    vi.stubEnv('KINJOT_MODE', 'local');
     errors = [];
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args.join(' ')));

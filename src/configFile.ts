@@ -1,18 +1,26 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
 // Stores the API key once per machine so terminal use and MCP configs don't
-// need JOTNOW_API_KEY in every env block (see resolveConfig in config.ts).
+// need KINJOT_API_KEY in every env block (see resolveConfig in config.ts).
 
 const LEGACY_CONFIG_VERSION = 1;
 const ENDPOINT_CONFIG_VERSION = 2;
 
-/** The two things `jotnow` can be pointed at (plans/desktop-app.md §5.4). */
-export type JotnowMode = 'local' | 'account';
+/** The two things `kinjot` can be pointed at (plans/desktop-app.md §5.4). */
+export type KinjotMode = 'local' | 'account';
 
-export const JOTNOW_MODES: readonly JotnowMode[] = ['local', 'account'];
+export const KINJOT_MODES: readonly KinjotMode[] = ['local', 'account'];
 
 /**
  * `mode` is optional. Hosted key and mode-only files stay at version 1;
@@ -23,27 +31,27 @@ export const JOTNOW_MODES: readonly JotnowMode[] = ['local', 'account'];
  * key, which is the intentional compatibility boundary.
  *
  * `apiKey` is optional for the same family of reasons in the other direction:
- * `jotnow use local` must be recordable on a machine that has no key at all.
+ * `kinjot use local` must be recordable on a machine that has no key at all.
  * The one cost, stated because it is the mirror image of the rule above: a
- * config written by `jotnow use local` before any `jotnow key` has no `apiKey`,
+ * config written by `kinjot use local` before any `kinjot key` has no `apiKey`,
  * and a CLI older than this one rejects that file as "unexpected shape". A
  * machine that has only ever chosen local mode has nothing for an older CLI to
  * do, and the alternative — refusing to record the mode without a key — leaves
- * `JOTNOW_MODE` as the only way to run local mode.
+ * `KINJOT_MODE` as the only way to run local mode.
  */
 interface StoredConfig {
   version: 1 | 2;
   apiKey?: string;
   apiUrl?: string;
-  mode?: JotnowMode;
+  mode?: KinjotMode;
 }
 
 // os.homedir() rather than XDG_CONFIG_HOME/%APPDATA%: an MCP host launches
 // this process with its own, often-stripped env (no XDG/APPDATA vars), but
 // os.homedir() is resolved from the OS user record, not env — it names the
-// same directory whether jotnow is run from a shell or an MCP host.
+// same directory whether kinjot is run from a shell or an MCP host.
 export function configDir(env: Record<string, string | undefined> = process.env): string {
-  return env.JOTNOW_CONFIG_DIR?.trim() || join(homedir(), '.jotnow');
+  return env.KINJOT_CONFIG_DIR?.trim() || join(homedir(), '.kinjot');
 }
 
 export function configFilePath(dir: string): string {
@@ -54,8 +62,8 @@ export function configFilePath(dir: string): string {
  * Writes the config file, preserving whatever `loadStoredConfig` reads back.
  *
  * Read-modify-write rather than overwrite, because the file now carries two
- * independent settings: `jotnow key` must not erase a stored mode, and
- * `jotnow use` must not erase the key.
+ * independent settings: `kinjot key` must not erase a stored mode, and
+ * `kinjot use` must not erase the key.
  */
 function writeStoredConfig(
   dir: string,
@@ -63,7 +71,7 @@ function writeStoredConfig(
   version?: StoredConfig['version'],
 ): void {
   // A corrupt existing file is recreated, not rethrown: `loadStoredKey`'s
-  // error text says "Run `jotnow key` to recreate it", and before `mode`
+  // error text says "Run `kinjot key` to recreate it", and before `mode`
   // existed the save was an unconditional overwrite — so the write commands
   // are the documented repair path and must never be blocked by the state
   // they exist to repair. What a garbage file loses is only what it already
@@ -81,8 +89,12 @@ function writeStoredConfig(
   const existingVersion = existingIsValid
     ? (() => {
         try {
-          const parsed = JSON.parse(readFileSync(configFilePath(dir), 'utf8')) as { version?: unknown };
-          return parsed.version === ENDPOINT_CONFIG_VERSION ? ENDPOINT_CONFIG_VERSION : LEGACY_CONFIG_VERSION;
+          const parsed = JSON.parse(readFileSync(configFilePath(dir), 'utf8')) as {
+            version?: unknown;
+          };
+          return parsed.version === ENDPOINT_CONFIG_VERSION
+            ? ENDPOINT_CONFIG_VERSION
+            : LEGACY_CONFIG_VERSION;
         } catch {
           return LEGACY_CONFIG_VERSION;
         }
@@ -117,21 +129,21 @@ export function saveStoredAccount(apiKey: string, apiUrl: string, dir: string): 
   writeStoredConfig(dir, { apiKey, apiUrl }, ENDPOINT_CONFIG_VERSION);
 }
 
-/** `jotnow use local|account` — the persisted rung of §5.4's precedence. */
-export function saveStoredMode(mode: JotnowMode, dir: string): void {
+/** `kinjot use local|account` — the persisted rung of §5.4's precedence. */
+export function saveStoredMode(mode: KinjotMode, dir: string): void {
   writeStoredConfig(dir, { mode });
 }
 
 /**
  * Loads the stored config, if any. Missing file → `{}` (first run).
  * Corrupt JSON or the wrong shape → throws, naming the file and pointing at
- * `jotnow key` to recreate it — callers must not swallow this into a
+ * `kinjot key` to recreate it — callers must not swallow this into a
  * "no key found" state, since that would hide a real problem.
  */
 export function loadStoredConfig(
   dir: string,
   stderr: { write: (chunk: string) => unknown } = process.stderr,
-): { apiKey?: string; apiUrl?: string; mode?: JotnowMode } {
+): { apiKey?: string; apiUrl?: string; mode?: KinjotMode } {
   const file = configFilePath(dir);
   if (!existsSync(file)) return {};
 
@@ -140,7 +152,7 @@ export function loadStoredConfig(
   try {
     parsed = JSON.parse(raw);
   } catch {
-    throw new Error(`${file} is not valid JSON. Run \`jotnow key\` to recreate it.`);
+    throw new Error(`${file} is not valid JSON. Run \`kinjot key\` to recreate it.`);
   }
   const record = parsed as Partial<StoredConfig>;
   if (
@@ -155,9 +167,9 @@ export function loadStoredConfig(
     (record.version === LEGACY_CONFIG_VERSION && record.apiUrl !== undefined) ||
     (record.version === ENDPOINT_CONFIG_VERSION &&
       (typeof record.apiUrl !== 'string' || record.apiUrl === '' || record.apiKey === undefined)) ||
-    (record.mode !== undefined && !JOTNOW_MODES.includes(record.mode))
+    (record.mode !== undefined && !KINJOT_MODES.includes(record.mode))
   ) {
-    throw new Error(`${file} has an unexpected shape. Run \`jotnow key\` to recreate it.`);
+    throw new Error(`${file} has an unexpected shape. Run \`kinjot key\` to recreate it.`);
   }
 
   // Windows: skip perms handling entirely. The user profile directory is
@@ -167,9 +179,11 @@ export function loadStoredConfig(
     const mode = statSync(file).mode & 0o777;
     if (mode & 0o077) {
       chmodSync(file, 0o600);
-      // stderr, never stdout: a bare `jotnow` invocation is an MCP stdio
+      // stderr, never stdout: a bare `kinjot` invocation is an MCP stdio
       // server, and anything written to stdout corrupts JSON-RPC framing.
-      stderr.write(`warning: tightened permissions on ${file} to 0600 (were 0${mode.toString(8)})\n`);
+      stderr.write(
+        `warning: tightened permissions on ${file} to 0600 (were 0${mode.toString(8)})\n`,
+      );
     }
   }
 
@@ -188,6 +202,6 @@ export function loadStoredKey(
 export function loadStoredMode(
   dir: string,
   stderr: { write: (chunk: string) => unknown } = process.stderr,
-): JotnowMode | undefined {
+): KinjotMode | undefined {
   return loadStoredConfig(dir, stderr).mode;
 }

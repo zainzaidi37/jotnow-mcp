@@ -9,26 +9,26 @@
 // on one machine while sync appears to work.
 //
 // The package already holds this philosophy one level down — `resolveConfig`
-// refuses to fall back to a stored key when `JOTNOW_API_KEY` is set, for the
+// refuses to fall back to a stored key when `KINJOT_API_KEY` is set, for the
 // same reason.
 
-import { configDir, configFilePath, loadStoredConfig, type JotnowMode } from './configFile.js';
+import { configDir, configFilePath, loadStoredConfig, type KinjotMode } from './configFile.js';
 import { pointerExists, pointerPath } from './local/pointer.js';
 
-export type { JotnowMode };
+export type { KinjotMode };
 
 /** Which rung of §5.4's precedence table decided. */
 export type ModeReason =
-  | 'env' // 1: JOTNOW_MODE
-  | 'stored' // 2: `jotnow use`
+  | 'env' // 1: KINJOT_MODE
+  | 'stored' // 2: `kinjot use`
   | 'sole-local' // 3: a pointer and no key
   | 'sole-account' // 3: a key and no pointer
   | 'default-account'; // neither: today's behaviour, and today's error message
 
 export interface ModeResolution {
-  readonly mode: JotnowMode;
+  readonly mode: KinjotMode;
   readonly reason: ModeReason;
-  /** One line, for `jotnow where`: why this rung won. */
+  /** One line, for `kinjot where`: why this rung won. */
   readonly why: string;
   /** The config root every path below resolved against. */
   readonly dir: string;
@@ -43,12 +43,12 @@ export class ModeError extends Error {
   }
 }
 
-function parseMode(value: string): JotnowMode | undefined {
+function parseMode(value: string): KinjotMode | undefined {
   return value === 'local' || value === 'account' ? value : undefined;
 }
 
 /**
- * Under rung 1 the availability flags are informational (`jotnow where`), the
+ * Under rung 1 the availability flags are informational (`kinjot where`), the
  * mode being already decided — so a corrupt config file reads as "no stored
  * key" here rather than blocking the env override it cannot affect.
  */
@@ -73,31 +73,31 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
   const dir = configDir(env);
   const localAvailable = pointerExists(dir);
 
-  // Rung 1 before the config file is even read: JOTNOW_MODE is the
+  // Rung 1 before the config file is even read: KINJOT_MODE is the
   // per-command escape hatch, and needs nothing from `config.json` — so a
   // corrupt or unreadable file must not be able to block it.
-  const rawEnvMode = env.JOTNOW_MODE?.trim();
+  const rawEnvMode = env.KINJOT_MODE?.trim();
   if (rawEnvMode !== undefined && rawEnvMode !== '') {
     const mode = parseMode(rawEnvMode);
     if (mode === undefined) {
       throw new ModeError(
-        `JOTNOW_MODE must be "local" or "account" (got ${JSON.stringify(rawEnvMode)}). ` +
+        `KINJOT_MODE must be "local" or "account" (got ${JSON.stringify(rawEnvMode)}). ` +
           `Nothing was written.`,
       );
     }
-    const accountAvailable = (env.JOTNOW_API_KEY?.trim() ?? '') !== '' || safeStoredKey(dir);
+    const accountAvailable = (env.KINJOT_API_KEY?.trim() ?? '') !== '' || safeStoredKey(dir);
     return {
       dir,
       localAvailable,
       accountAvailable,
       mode,
       reason: 'env',
-      why: `JOTNOW_MODE=${mode} overrides everything else`,
+      why: `KINJOT_MODE=${mode} overrides everything else`,
     };
   }
 
   const stored = loadStoredConfig(dir); // may throw (corrupt file) — it names the file
-  const accountAvailable = (env.JOTNOW_API_KEY?.trim() ?? '') !== '' || stored.apiKey !== undefined;
+  const accountAvailable = (env.KINJOT_API_KEY?.trim() ?? '') !== '' || stored.apiKey !== undefined;
   const base = { dir, localAvailable, accountAvailable };
 
   if (stored.mode !== undefined) {
@@ -105,7 +105,7 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
       ...base,
       mode: stored.mode,
       reason: 'stored',
-      why: `mode "${stored.mode}" stored in ${configFilePath(dir)} by \`jotnow use\``,
+      why: `mode "${stored.mode}" stored in ${configFilePath(dir)} by \`kinjot use\``,
     };
   }
 
@@ -117,10 +117,10 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
   if (localAvailable && accountAvailable) {
     throw new ModeError(
       `both a local library and an API key are set up on this machine, and no mode has been ` +
-        `chosen — Jotnow will not guess which one your jots belong in. ` +
-        `Run \`jotnow use account\` to keep writing to your Jotnow account, or ` +
-        `\`jotnow use local\` to write to the desktop app's local library ` +
-        `(or set JOTNOW_MODE for a single command). Nothing was written.`,
+        `chosen — Kinjot will not guess which one your jots belong in. ` +
+        `Run \`kinjot use account\` to keep writing to your Kinjot account, or ` +
+        `\`kinjot use local\` to write to the desktop app's local library ` +
+        `(or set KINJOT_MODE for a single command). Nothing was written.`,
     );
   }
 
@@ -143,7 +143,7 @@ export function resolveMode(env: Record<string, string | undefined> = process.en
   }
 
   // Neither: stay on the account path so the existing "No API key found. Run
-  // `jotnow key`" message is what a first-run user meets, unchanged.
+  // `kinjot key`" message is what a first-run user meets, unchanged.
   return {
     ...base,
     mode: 'account',

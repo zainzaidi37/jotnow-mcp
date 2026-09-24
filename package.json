@@ -1,21 +1,21 @@
 {
-  "name": "jotnow",
-  "version": "0.4.4",
-  "mcpName": "io.github.zainzaidi37/jotnow",
+  "name": "kinjot",
+  "version": "0.1.0",
+  "mcpName": "io.github.zainzaidi37/kinjot",
   "packageManager": "pnpm@9.15.9",
-  "description": "Jot notes from Claude Code / Codex to jotnow — MCP server and CLI",
+  "description": "Jot notes from Claude Code / Codex to Kinjot — MCP server and CLI",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zainzaidi37/jotnow-mcp.git"
+    "url": "git+https://github.com/zainzaidi37/kinjot-mcp.git"
   },
-  "homepage": "https://jotnow.dev",
+  "homepage": "https://kinjot.com",
   "bugs": {
-    "url": "https://github.com/zainzaidi37/jotnow-mcp/issues"
+    "url": "https://github.com/zainzaidi37/kinjot-mcp/issues"
   },
   "type": "module",
   "bin": {
-    "jotnow": "dist/main.js"
+    "kinjot": "dist/main.js"
   },
   "files": [
     "dist",

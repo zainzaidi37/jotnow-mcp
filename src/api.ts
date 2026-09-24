@@ -5,7 +5,7 @@ import { normalizeTags } from './tagging.js';
 import { parseNoteLabel } from './core/note-label.js';
 
 // Thin client for the mcp-api Edge Function. Note ids are generated here —
-// UUIDs are client-generated throughout jotnow.
+// UUIDs are client-generated throughout kinjot.
 
 // Listings (search and recent) are deliberately compact: no bodies. A body
 // only enters the caller's context when it explicitly fetches one note via
@@ -149,7 +149,7 @@ export class NotesApi {
       if (shortId !== null && error instanceof ApiError && error.status === 400) {
         throw new ApiError(
           400,
-          'This Jotnow backend does not support short ids yet; use the 8-character id prefix instead.',
+          'This Kinjot backend does not support short ids yet; use the 8-character id prefix instead.',
         );
       }
       throw error;
@@ -195,7 +195,7 @@ export class NotesApi {
     if (error.status === 400 && error.message === 'unknown action') {
       return new ApiError(
         400,
-        'This Jotnow backend does not support agent edits yet; update the deployment.',
+        'This Kinjot backend does not support agent edits yet; update the deployment.',
       );
     }
     if (error.status === 409 && error.message.includes('old_string must match exactly')) {
@@ -248,12 +248,12 @@ export class NotesApi {
     const invalidReply = (detail: string) =>
       new ApiError(
         response.status,
-        `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g jotnow) or, on a self-hosted deployment, update the backend.`,
+        `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g kinjot) or, on a self-hosted deployment, update the backend.`,
       );
-    if (body === null) throw invalidReply('no JSON response this version of jotnow understands');
+    if (body === null) throw invalidReply('no JSON response this version of Kinjot understands');
     const parsed = schema.safeParse(body);
     if (!parsed.success)
-      throw invalidReply('a response this version of jotnow does not understand');
+      throw invalidReply('a response this version of Kinjot does not understand');
     return parsed.data;
   }
 }

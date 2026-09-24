@@ -1,30 +1,30 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.zainzaidi37/jotnow",
-  "title": "Jotnow",
+  "name": "io.github.zainzaidi37/kinjot",
+  "title": "Kinjot",
   "description": "Save agent output as notes, search saved notes, and retrieve them in Claude Code and Codex.",
   "repository": {
-    "url": "https://github.com/zainzaidi37/jotnow-mcp",
+    "url": "https://github.com/zainzaidi37/kinjot-mcp",
     "source": "github"
   },
-  "websiteUrl": "https://jotnow.dev/docs",
-  "version": "0.4.4",
+  "websiteUrl": "https://kinjot.com/docs",
+  "version": "0.1.0",
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "jotnow",
-      "version": "0.4.4",
+      "identifier": "kinjot",
+      "version": "0.1.0",
       "transport": { "type": "stdio" },
       "environmentVariables": [
         {
-          "name": "JOTNOW_API_KEY",
-          "description": "Account API key from jotnow.dev Settings > API keys. Omit if stored with jotnow key or using desktop local capture.",
+          "name": "KINJOT_API_KEY",
+          "description": "Account API key from kinjot.com Settings > API keys. Omit if stored with kinjot key or using desktop local capture.",
           "format": "string",
           "isSecret": true,
           "isRequired": false
         },
         {
-          "name": "JOTNOW_MODE",
+          "name": "KINJOT_MODE",
           "description": "Choose account for account tools or local for desktop capture only. Required if both are configured without a saved mode choice.",
           "format": "string",
           "choices": ["account", "local"],

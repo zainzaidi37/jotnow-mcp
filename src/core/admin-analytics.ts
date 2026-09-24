@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT.
 //
 // Vendored copy of packages/core/src/admin-analytics.ts, emitted by
-// `pnpm --filter @jotnow/core emit:mcp-core` (plans/desktop-app.md §4.5).
+// `pnpm --filter @kinjot/core emit:mcp-core` (plans/desktop-app.md §4.5).
 // Edit the source module and re-run; CI fails on any difference.
 
 import { z } from 'zod';
@@ -26,7 +26,7 @@ import { z } from 'zod';
  *
  * `supabase/functions/admin-analytics/schema.ts` is the server's mirror of
  * this file: the Deno/npm boundary keeps Edge Functions from importing
- * `@jotnow/core` (see `_shared/tidy-clarify.ts` for the same arrangement), so
+ * `@kinjot/core` (see `_shared/tidy-clarify.ts` for the same arrangement), so
  * the two must be changed together.
  */
 
@@ -321,9 +321,7 @@ export type AdminUsersResponse = z.infer<typeof AdminUsersResponseSchema>;
  * about what a field means.
  */
 export const AdminUserDetailSchema = AdminUserRowSchema.extend({
-  activity_by_day: z.array(
-    z.object({ date: isoDate, notes: count, recalls: count, tidy: count }),
-  ),
+  activity_by_day: z.array(z.object({ date: isoDate, notes: count, recalls: count, tidy: count })),
 });
 export type AdminUserDetail = z.infer<typeof AdminUserDetailSchema>;
 

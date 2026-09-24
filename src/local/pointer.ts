@@ -1,7 +1,7 @@
 // The CLI's half of the pointer file (plans/desktop-app.md §5.3; the app's
 // half is `apps/desktop/src-tauri/src/pointer.rs`, PR A).
 //
-// The app writes `~/.jotnow/local-library.json` on every launch, naming the
+// The app writes `~/.kinjot/local-library.json` on every launch, naming the
 // database it actually opened plus that library's identity and schema version.
 // This module only *reads and parses* it — the handshake that decides whether
 // the named file may be written to lives in `library.ts`, because the pointer
@@ -91,7 +91,7 @@ export function readPointer(dir: string): LocalLibraryPointer {
     parsed = JSON.parse(readFileSync(file, 'utf8'));
   } catch {
     throw new LocalModeError(
-      `${file} is not valid JSON. Launch the jotnow desktop app to rewrite it; ` +
+      `${file} is not valid JSON. Launch the Kinjot desktop app to rewrite it; ` +
         `nothing was written.`,
     );
   }
@@ -99,7 +99,7 @@ export function readPointer(dir: string): LocalLibraryPointer {
   const record = pointerSchema.safeParse(parsed);
   if (!record.success) {
     throw new LocalModeError(
-      `${file} has an unexpected shape. Launch the jotnow desktop app to rewrite it; ` +
+      `${file} has an unexpected shape. Launch the Kinjot desktop app to rewrite it; ` +
         `nothing was written.`,
     );
   }
@@ -109,9 +109,9 @@ export function readPointer(dir: string): LocalLibraryPointer {
   // different instruction from telling them to relaunch the app.
   if (record.data.version > POINTER_VERSION) {
     throw new LocalModeError(
-      `${file} was written by a newer jotnow desktop app (pointer version ` +
+      `${file} was written by a newer Kinjot desktop app (pointer version ` +
         `${record.data.version}; this CLI understands ${POINTER_VERSION}). ` +
-        `Update the CLI: npm i -g jotnow.`,
+        `Update the CLI: npm i -g kinjot.`,
     );
   }
 

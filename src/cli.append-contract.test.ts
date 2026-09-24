@@ -6,17 +6,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NotesApi } from './api.js';
 import { main } from './cli.js';
 
-const GOOD_KEY = `jn_live_${'a'.repeat(43)}`;
+const GOOD_KEY = `kj_live_${'a'.repeat(43)}`;
 
 describe('cli.append-contract', () => {
   let dir: string;
   const errors: string[] = [];
   const output: string[] = [];
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-append-contract-'));
-    vi.stubEnv('JOTNOW_CONFIG_DIR', dir);
-    vi.stubEnv('JOTNOW_MODE', 'account');
-    vi.stubEnv('JOTNOW_API_KEY', GOOD_KEY);
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-append-contract-'));
+    vi.stubEnv('KINJOT_CONFIG_DIR', dir);
+    vi.stubEnv('KINJOT_MODE', 'account');
+    vi.stubEnv('KINJOT_API_KEY', GOOD_KEY);
     errors.length = 0;
     output.length = 0;
     vi.spyOn(console, 'error').mockImplementation((...args) => void errors.push(args.join(' ')));
@@ -71,7 +71,7 @@ describe('cli.append-contract', () => {
     expect(output[0]).not.toContain('\u001b');
   });
   it('refuses local mode through the backend', async () => {
-    vi.stubEnv('JOTNOW_MODE', 'local');
+    vi.stubEnv('KINJOT_MODE', 'local');
     stdin('text');
     await main(['append', 'A10']);
     expect(process.exitCode).toBe(1);

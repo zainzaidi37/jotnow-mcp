@@ -28,7 +28,7 @@ describe('saveNoteLocally', () => {
   let library: LocalLibrary;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-save-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-save-'));
     makeLibraryFixture(dir);
     library = openLocalLibrary(dir);
   });
@@ -184,7 +184,7 @@ describe('applySaveNotePlan', () => {
   let library: LocalLibrary;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-apply-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-apply-'));
     makeLibraryFixture(dir);
     library = openLocalLibrary(dir);
   });

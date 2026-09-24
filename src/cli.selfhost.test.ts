@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { configFilePath } from './configFile.js';
 import { runInitSelfHost, runWhere, selfHostApiUrl } from './cli.js';
 
-const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
+const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 const REF = 'abcdefghijklmnopqrst';
 
 function response(): Response {
@@ -45,7 +45,7 @@ describe('runInitSelfHost', () => {
   let dir: string;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-selfhost-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-selfhost-'));
   });
 
   afterEach(() => {
@@ -58,7 +58,7 @@ describe('runInitSelfHost', () => {
     vi.stubGlobal('fetch', fetchMock);
     const stdout = capture();
     await runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       readProject: async () => REF,
       readHidden: async () => GOOD_KEY,
       stdout,
@@ -72,10 +72,10 @@ describe('runInitSelfHost', () => {
       apiUrl,
     });
     expect(stdout.all()).toContain(GOOD_KEY);
-    expect(stdout.all()).toContain(`"JOTNOW_API_URL": "${apiUrl}"`);
+    expect(stdout.all()).toContain(`"KINJOT_API_URL": "${apiUrl}"`);
     expect(stdout.all()).toContain('mcpServers');
-    expect(stdout.all()).toContain(`claude mcp add jotnow -e JOTNOW_API_KEY=${GOOD_KEY}`);
-    expect(stdout.all()).toContain(`codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY}`);
+    expect(stdout.all()).toContain(`claude mcp add kinjot -e KINJOT_API_KEY=${GOOD_KEY}`);
+    expect(stdout.all()).toContain(`codex mcp add kinjot --env KINJOT_API_KEY=${GOOD_KEY}`);
   });
 
   it('accepts project and key in one ended piped chunk without losing the second line', async () => {
@@ -85,7 +85,7 @@ describe('runInitSelfHost', () => {
     );
     const input = new EventEmitter();
     const done = runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       input,
       isTTY: false,
       stdout: capture(),
@@ -104,7 +104,7 @@ describe('runInitSelfHost', () => {
     );
     const input = new EventEmitter();
     const done = runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       input,
       isTTY: false,
       stdout: capture(),
@@ -121,7 +121,7 @@ describe('runInitSelfHost', () => {
     const input = new EventEmitter();
     const url = 'http://127.0.0.1:54321/custom/path?owner=o-neil&mode=1';
     const done = runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       flags: new Map([['key', GOOD_KEY]]),
       input,
       isTTY: true,
@@ -151,7 +151,7 @@ describe('runInitSelfHost', () => {
     input.resume = vi.fn();
     const promptOutput = capture();
     const done = runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       input,
       output: promptOutput,
       isTTY: true,
@@ -175,7 +175,7 @@ describe('runInitSelfHost', () => {
     const readProject = vi.fn(async () => REF);
     const apiUrl = 'https://chosen.example/functions/v1/mcp-api';
     await runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       flags: new Map([
         ['api-url', apiUrl],
         ['key', GOOD_KEY],
@@ -190,7 +190,7 @@ describe('runInitSelfHost', () => {
   it('requires a project instead of silently falling back to hosted', async () => {
     await expect(
       runInitSelfHost({
-        env: { JOTNOW_CONFIG_DIR: dir },
+        env: { KINJOT_CONFIG_DIR: dir },
         readProject: async () => ' ',
         readHidden: async () => GOOD_KEY,
         stdout: capture(),
@@ -206,7 +206,7 @@ describe('runInitSelfHost', () => {
     const readHidden = vi.fn(async () => GOOD_KEY);
     await expect(
       runInitSelfHost({
-        env: { JOTNOW_CONFIG_DIR: dir },
+        env: { KINJOT_CONFIG_DIR: dir },
         flags: new Map([['typo', 'value']]),
         readProject,
         readHidden,
@@ -225,7 +225,7 @@ describe('runInitSelfHost', () => {
     );
     await expect(
       runInitSelfHost({
-        env: { JOTNOW_CONFIG_DIR: dir },
+        env: { KINJOT_CONFIG_DIR: dir },
         readProject: async () => REF,
         readHidden: async () => GOOD_KEY,
         stdout: capture(),
@@ -241,7 +241,7 @@ describe('runInitSelfHost', () => {
     );
     const apiUrl = 'https://project.example/functions/v1/mcp-api';
     await runInitSelfHost({
-      env: { JOTNOW_CONFIG_DIR: dir },
+      env: { KINJOT_CONFIG_DIR: dir },
       flags: new Map([
         ['api-url', apiUrl],
         ['key', GOOD_KEY],
@@ -252,7 +252,7 @@ describe('runInitSelfHost', () => {
     const log = vi.spyOn(console, 'log').mockImplementation((...values) => {
       lines.push(values.join(' '));
     });
-    runWhere({ JOTNOW_CONFIG_DIR: dir });
+    runWhere({ KINJOT_CONFIG_DIR: dir });
     log.mockRestore();
     expect(lines).toContain(`target: ${apiUrl}`);
   });

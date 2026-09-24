@@ -74,7 +74,7 @@ function scalar(db: SqliteDatabase, sql: string): unknown {
 /**
  * Runs the §5.3 handshake and hands back an open, write-ready library.
  *
- * @param dir the config root (`configDir()`), honoring `JOTNOW_CONFIG_DIR`
+ * @param dir the config root (`configDir()`), honoring `KINJOT_CONFIG_DIR`
  *   exactly as the key file does — which is what makes the two-process test
  *   harness possible without touching a developer's real library (§5.1: the
  *   override moves the root for *both* processes, `library.rs`'s
@@ -88,12 +88,12 @@ export function openLocalLibrary(dir: string): LocalLibrary {
   const pointer = readPointer(dir);
 
   // A dangling `db_path` is routine — an uninstalled channel, an MSIX repair,
-  // a cleared ~/.jotnow/local/ — and §5.3 makes it a hard error precisely
+  // a cleared ~/.kinjot/local/ — and §5.3 makes it a hard error precisely
   // because the alternative (treating it as "no local library") would ship a
   // local-first user's jots to a server they abandoned.
   if (!existsSync(pointer.db_path)) {
     throw new LocalModeError(
-      `the jotnow local library named by the pointer is missing: ${pointer.db_path}. ` +
+      `the Kinjot local library named by the pointer is missing: ${pointer.db_path}. ` +
         `Launch the desktop app to recreate it — nothing was written, and nothing was ` +
         `sent to the server.`,
     );
@@ -109,7 +109,7 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     db = new DatabaseSync(pointer.db_path, { enableForeignKeyConstraints: true });
   } catch (error) {
     throw new LocalModeError(
-      `could not open the jotnow local library at ${pointer.db_path}: ${String(error)}. ` +
+      `could not open the Kinjot local library at ${pointer.db_path}: ${String(error)}. ` +
         `Nothing was written, and nothing was sent to the server.`,
     );
   }
@@ -138,7 +138,7 @@ export function openLocalLibrary(dir: string): LocalLibrary {
       // Never "fixed": only the app creates this file, and it sets WAL once at
       // creation (§4.3). A non-WAL library is a corrupt installation.
       throw new LocalModeError(
-        `the jotnow local library at ${pointer.db_path} is not in WAL mode ` +
+        `the Kinjot local library at ${pointer.db_path} is not in WAL mode ` +
           `(journal_mode=${journalMode || 'unknown'}), which means it was not created by the ` +
           `desktop app. Nothing was written — reinstall the desktop app or remove that file ` +
           `and launch it again.`,
@@ -148,7 +148,7 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     const workspaceId = readWorkspaceUuid(db, pointer.db_path);
     if (workspaceId !== pointer.workspace_uuid) {
       throw new LocalModeError(
-        `the jotnow pointer file and the library at ${pointer.db_path} disagree about which ` +
+        `the Kinjot pointer file and the library at ${pointer.db_path} disagree about which ` +
           `workspace it is (pointer ${pointer.workspace_uuid}, library ${workspaceId}). ` +
           `Launch the desktop app to republish the pointer; nothing was written.`,
       );
@@ -157,21 +157,21 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     const schemaVersion = readSchemaVersion(db, pointer.db_path);
     if (schemaVersion !== pointer.schema_version) {
       throw new LocalModeError(
-        `the jotnow pointer file and the library at ${pointer.db_path} disagree about its ` +
+        `the Kinjot pointer file and the library at ${pointer.db_path} disagree about its ` +
           `schema version (pointer ${pointer.schema_version}, library ${schemaVersion}). ` +
           `Launch the desktop app to republish the pointer; nothing was written.`,
       );
     }
     if (schemaVersion > MAX_SUPPORTED_SCHEMA_VERSION) {
       throw new LocalModeError(
-        `the jotnow local library is newer than this CLI understands (library schema ` +
+        `the Kinjot local library is newer than this CLI understands (library schema ` +
           `${schemaVersion}, this CLI ${MAX_SUPPORTED_SCHEMA_VERSION}). ` +
-          `Update the CLI: npm i -g jotnow. Nothing was written.`,
+          `Update the CLI: npm i -g kinjot. Nothing was written.`,
       );
     }
     if (schemaVersion < MIN_SUPPORTED_SCHEMA_VERSION) {
       throw new LocalModeError(
-        `the jotnow local library at ${pointer.db_path} has schema version ${schemaVersion}, ` +
+        `the Kinjot local library at ${pointer.db_path} has schema version ${schemaVersion}, ` +
           `below this CLI's minimum ${MIN_SUPPORTED_SCHEMA_VERSION}. Launch the desktop app to migrate it; ` +
           `nothing was written.`,
       );
@@ -197,7 +197,7 @@ export function openLocalLibrary(dir: string): LocalLibrary {
     // non-SQLite `library.db` lands here as a raw SqliteError, and it must
     // leave in the same voice as every other refusal on this path.
     throw new LocalModeError(
-      `the jotnow local library at ${pointer.db_path} could not be read ` +
+      `the Kinjot local library at ${pointer.db_path} could not be read ` +
         `(${String(error)}). Launch the desktop app to recreate it; nothing was written.`,
     );
   }
@@ -213,7 +213,7 @@ const SQLITE_BUSY = 5;
  */
 export function busyRefusal(path: string, error: unknown): LocalModeError {
   return new LocalModeError(
-    `another process held the jotnow local library at ${path} locked for longer than ` +
+    `another process held the Kinjot local library at ${path} locked for longer than ` +
       `${BUSY_TIMEOUT_MS / 1000} s (${String(error)}); nothing was written, and nothing was ` +
       `sent to the server. Try again.`,
   );
@@ -246,12 +246,12 @@ function readWorkspaceUuid(db: SqliteDatabase, path: string): string {
     // foreign file: leave it to the caller's classification.
     if (isSqliteBusy(error)) throw error;
     throw new LocalModeError(
-      `${path} does not look like a jotnow library (${String(error)}). Nothing was written.`,
+      `${path} does not look like a Kinjot library (${String(error)}). Nothing was written.`,
     );
   }
   if (typeof value !== 'string' || value === '') {
     throw new LocalModeError(
-      `${path} carries no workspace identity, so it is not a jotnow library the CLI may ` +
+      `${path} carries no workspace identity, so it is not a Kinjot library the CLI may ` +
         `write to. Launch the desktop app; nothing was written.`,
     );
   }
@@ -274,7 +274,7 @@ function readSchemaVersion(db: SqliteDatabase, path: string): number {
   } catch (error) {
     if (isSqliteBusy(error)) throw error;
     throw new LocalModeError(
-      `${path} has no migration history, so it is not a jotnow library the CLI may write ` +
+      `${path} has no migration history, so it is not a Kinjot library the CLI may write ` +
         `to (${String(error)}). Nothing was written.`,
     );
   }

@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT.
 //
 // Vendored copy of packages/core/src/note-label.ts, emitted by
-// `pnpm --filter @jotnow/core emit:mcp-core` (plans/desktop-app.md §4.5).
+// `pnpm --filter @kinjot/core emit:mcp-core` (plans/desktop-app.md §4.5).
 // Edit the source module and re-run; CI fails on any difference.
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ';

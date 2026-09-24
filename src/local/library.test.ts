@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { openLocalLibrary, BUSY_TIMEOUT_MS, MAX_SUPPORTED_SCHEMA_VERSION } from './library.js';
-import { DatabaseSync, FIXTURE_WORKSPACE, holdLocked, makeLibraryFixture } from './library-fixture.js';
+import {
+  DatabaseSync,
+  FIXTURE_WORKSPACE,
+  holdLocked,
+  makeLibraryFixture,
+} from './library-fixture.js';
 import { pointerPath } from './pointer.js';
 import {
   assertSqliteFloor,
@@ -75,7 +80,7 @@ describe('runtime floors', () => {
 describe('the pointer handshake', () => {
   let dir: string;
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-lib-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-lib-'));
   });
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
@@ -217,7 +222,7 @@ describe('the pointer handshake', () => {
     }
   }, 20_000);
 
-  it('refuses a database that is not a jotnow library at all', () => {
+  it('refuses a database that is not a Kinjot library at all', () => {
     mkdirSync(join(dir, 'local'), { recursive: true });
     const dbPath = join(dir, 'local', 'library.db');
     const db = new DatabaseSync(dbPath);
@@ -228,6 +233,6 @@ describe('the pointer handshake', () => {
       pointerPath(dir),
       JSON.stringify({ version: 1, db_path: dbPath, workspace_uuid: WORKSPACE, schema_version: 2 }),
     );
-    expect(() => openLocalLibrary(dir)).toThrow(/does not look like a jotnow library/);
+    expect(() => openLocalLibrary(dir)).toThrow(/does not look like a Kinjot library/);
   });
 });

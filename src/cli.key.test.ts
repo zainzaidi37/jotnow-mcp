@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vite
 import { DEFAULT_API_URL } from './config.js';
 import { configFilePath } from './configFile.js';
 
-const GOOD_KEY = `jn_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
+const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -27,22 +27,22 @@ describe('runKey', () => {
   let prevApiUrl: string | undefined;
 
   beforeEach(() => {
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-key-'));
-    prevConfigDir = process.env.JOTNOW_CONFIG_DIR;
-    prevApiKey = process.env.JOTNOW_API_KEY;
-    prevApiUrl = process.env.JOTNOW_API_URL;
-    process.env.JOTNOW_CONFIG_DIR = dir;
-    delete process.env.JOTNOW_API_KEY;
-    delete process.env.JOTNOW_API_URL;
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-key-'));
+    prevConfigDir = process.env.KINJOT_CONFIG_DIR;
+    prevApiKey = process.env.KINJOT_API_KEY;
+    prevApiUrl = process.env.KINJOT_API_URL;
+    process.env.KINJOT_CONFIG_DIR = dir;
+    delete process.env.KINJOT_API_KEY;
+    delete process.env.KINJOT_API_URL;
   });
 
   afterEach(() => {
-    if (prevConfigDir === undefined) delete process.env.JOTNOW_CONFIG_DIR;
-    else process.env.JOTNOW_CONFIG_DIR = prevConfigDir;
-    if (prevApiKey === undefined) delete process.env.JOTNOW_API_KEY;
-    else process.env.JOTNOW_API_KEY = prevApiKey;
-    if (prevApiUrl === undefined) delete process.env.JOTNOW_API_URL;
-    else process.env.JOTNOW_API_URL = prevApiUrl;
+    if (prevConfigDir === undefined) delete process.env.KINJOT_CONFIG_DIR;
+    else process.env.KINJOT_CONFIG_DIR = prevConfigDir;
+    if (prevApiKey === undefined) delete process.env.KINJOT_API_KEY;
+    else process.env.KINJOT_API_KEY = prevApiKey;
+    if (prevApiUrl === undefined) delete process.env.KINJOT_API_URL;
+    else process.env.KINJOT_API_URL = prevApiUrl;
     rmSync(dir, { recursive: true, force: true });
     vi.unstubAllGlobals();
   });
@@ -62,8 +62,8 @@ describe('runKey', () => {
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
     expect(stdout.all()).toMatch(/ok ✔/);
     expect(stdout.all()).toContain('mcpServers');
-    expect(stdout.all()).toContain('claude mcp add jotnow -- npx -y jotnow');
-    expect(stdout.all()).toContain('codex mcp add jotnow -- npx -y jotnow');
+    expect(stdout.all()).toContain('claude mcp add kinjot -- npx -y kinjot');
+    expect(stdout.all()).toContain('codex mcp add kinjot -- npx -y kinjot');
   });
 
   it('treats a legacy production URL as the default when saving a key', async () => {
@@ -77,13 +77,13 @@ describe('runKey', () => {
       stderr: capture(),
       env: {
         ...process.env,
-        JOTNOW_API_URL: 'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api',
+        KINJOT_API_URL: 'https://opzbxxrjiiktduivkdwm.supabase.co/functions/v1/mcp-api',
       },
     });
 
     expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
-    expect(stdout.all()).not.toContain('JOTNOW_API_URL');
+    expect(stdout.all()).not.toContain('KINJOT_API_URL');
   });
 
   it('malformed key: errors before any API call, saves nothing', async () => {
@@ -95,7 +95,7 @@ describe('runKey', () => {
 
     await expect(
       runKey({
-        readHidden: async () => 'jn_live_not_a_real_key',
+        readHidden: async () => 'kj_live_not_a_real_key',
         stdout,
         stderr,
         env: process.env,
@@ -120,10 +120,10 @@ describe('runKey', () => {
     expect(existsSync(configFilePath(dir))).toBe(false);
     const combined = stdout.all() + stderr.all();
     expect(combined).not.toContain(GOOD_KEY);
-    expect(combined).not.toContain('jn_live_');
+    expect(combined).not.toContain('kj_live_');
   });
 
-  it('success output never contains the key value or the jn_live_ prefix', async () => {
+  it('success output never contains the key value or the kj_live_ prefix', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
@@ -134,7 +134,7 @@ describe('runKey', () => {
 
     const combined = stdout.all() + stderr.all();
     expect(combined).not.toContain(GOOD_KEY);
-    expect(combined).not.toMatch(/jn_live_/);
+    expect(combined).not.toMatch(/kj_live_/);
   });
 
   it('carries a custom endpoint into JSON and both client commands with shell-safe quoting', async () => {
@@ -145,18 +145,18 @@ describe('runKey', () => {
     const { runKey } = await import('./cli.js');
     const stdout = capture();
     const stderr = capture();
-    const env = { ...process.env, JOTNOW_API_URL: apiUrl };
+    const env = { ...process.env, KINJOT_API_URL: apiUrl };
 
     await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env });
 
     expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
-    expect(stdout.all()).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    expect(stdout.all()).toContain(`"KINJOT_API_URL": ${JSON.stringify(apiUrl)}`);
     const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
     expect(stdout.all()).toContain(
-      `claude mcp add jotnow -e JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+      `claude mcp add kinjot -e KINJOT_API_URL=${quotedUrl} -- npx -y kinjot`,
     );
     expect(stdout.all()).toContain(
-      `codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+      `codex mcp add kinjot --env KINJOT_API_URL=${quotedUrl} -- npx -y kinjot`,
     );
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBe(apiUrl);
     expect(stdout.all()).toMatch(/custom endpoint automatically/i);
@@ -171,7 +171,7 @@ describe('runKey', () => {
     const stderr = capture();
     const env = {
       ...process.env,
-      JOTNOW_API_URL: 'https://ignored.example/functions/v1/mcp-api',
+      KINJOT_API_URL: 'https://ignored.example/functions/v1/mcp-api',
     };
 
     await runKey({
@@ -183,10 +183,10 @@ describe('runKey', () => {
     });
 
     expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
-    expect(stdout.all()).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    expect(stdout.all()).toContain(`"KINJOT_API_URL": ${JSON.stringify(apiUrl)}`);
     const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
-    expect(stdout.all()).toContain(`claude mcp add jotnow -e JOTNOW_API_URL=${quotedUrl}`);
-    expect(stdout.all()).toContain(`codex mcp add jotnow --env JOTNOW_API_URL=${quotedUrl}`);
+    expect(stdout.all()).toContain(`claude mcp add kinjot -e KINJOT_API_URL=${quotedUrl}`);
+    expect(stdout.all()).toContain(`codex mcp add kinjot --env KINJOT_API_URL=${quotedUrl}`);
     expect(stdout.all()).not.toContain('ignored.example');
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBe(apiUrl);
     expect(stdout.all()).toMatch(/custom endpoint automatically/i);
@@ -209,18 +209,18 @@ describe('runKey', () => {
     expect(existsSync(configFilePath(dir))).toBe(false);
   });
 
-  it('warns on stderr when JOTNOW_API_KEY is already set, but still saves', async () => {
+  it('warns on stderr when KINJOT_API_KEY is already set, but still saves', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
     const stderr = capture();
-    const env = { ...process.env, JOTNOW_API_KEY: 'jn_live_some_other_existing_env_key_value_x' };
+    const env = { ...process.env, KINJOT_API_KEY: 'kj_live_some_other_existing_env_key_value_x' };
 
     await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env });
 
     expect(existsSync(configFilePath(dir))).toBe(true);
-    expect(stderr.all()).toMatch(/JOTNOW_API_KEY/);
+    expect(stderr.all()).toMatch(/KINJOT_API_KEY/);
     expect(stderr.all()).toMatch(/override/i);
   });
 
@@ -248,15 +248,15 @@ describe('runKey', () => {
 });
 
 describe('copy', () => {
-  it('HELP mentions `jotnow key` and the global-install tip', async () => {
+  it('HELP mentions `kinjot key` and the global-install tip', async () => {
     const { HELP } = await import('./cli.js');
-    expect(HELP).toContain('jotnow key');
-    expect(HELP).toContain('npm i -g jotnow');
+    expect(HELP).toContain('kinjot key');
+    expect(HELP).toContain('npm i -g kinjot');
     expect(HELP).toContain('--api-url');
   });
 
   // README tells users a feature needs "0.4.3 or newer"; without this case
-  // `jotnow --version` exited 1 with `unknown command`, so there was no way to
+  // `kinjot --version` exited 1 with `unknown command`, so there was no way to
   // answer that question from the installed CLI.
   it.each(['--version', '-v', 'version'])('%s prints the running version', async (command) => {
     const { main, VERSION } = await import('./cli.js');
@@ -276,11 +276,11 @@ describe('copy', () => {
 
   it('HELP lists the version and help commands it accepts', async () => {
     const { HELP } = await import('./cli.js');
-    expect(HELP).toContain('jotnow help');
-    expect(HELP).toContain('jotnow --version');
+    expect(HELP).toContain('kinjot help');
+    expect(HELP).toContain('kinjot --version');
   });
 
-  it('runInit output includes the `jotnow key` tip and Codex command', async () => {
+  it('runInit output includes the `kinjot key` tip and Codex command', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
@@ -295,16 +295,16 @@ describe('copy', () => {
       vi.unstubAllGlobals();
     }
     const output = logs.join('\n');
-    expect(output).toMatch(/jotnow key/);
+    expect(output).toMatch(/kinjot key/);
     expect(output).toContain(
-      `claude mcp add jotnow -e JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`,
+      `claude mcp add kinjot -e KINJOT_API_KEY=${GOOD_KEY} -- npx -y kinjot`,
     );
     expect(output).toContain(
-      `codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} -- npx -y jotnow`,
+      `codex mcp add kinjot --env KINJOT_API_KEY=${GOOD_KEY} -- npx -y kinjot`,
     );
   });
 
-  it('runInit omits JOTNOW_API_URL for the legacy production endpoint', async () => {
+  it('runInit omits KINJOT_API_URL for the legacy production endpoint', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
@@ -325,7 +325,7 @@ describe('copy', () => {
       vi.unstubAllGlobals();
     }
     expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
-    expect(logs.join('\n')).not.toContain('JOTNOW_API_URL');
+    expect(logs.join('\n')).not.toContain('KINJOT_API_URL');
   });
 
   it('runInit carries a custom endpoint into both client commands with shell-safe quoting', async () => {
@@ -337,14 +337,14 @@ describe('copy', () => {
     const logSpy = vi
       .spyOn(console, 'log')
       .mockImplementation((...args) => void logs.push(args.join(' ')));
-    const previousApiUrl = process.env.JOTNOW_API_URL;
-    process.env.JOTNOW_API_URL = apiUrl;
+    const previousApiUrl = process.env.KINJOT_API_URL;
+    process.env.KINJOT_API_URL = apiUrl;
     const { main } = await import('./cli.js');
     try {
       await main(['init', '--key', GOOD_KEY]);
     } finally {
-      if (previousApiUrl === undefined) delete process.env.JOTNOW_API_URL;
-      else process.env.JOTNOW_API_URL = previousApiUrl;
+      if (previousApiUrl === undefined) delete process.env.KINJOT_API_URL;
+      else process.env.KINJOT_API_URL = previousApiUrl;
       logSpy.mockRestore();
       vi.unstubAllGlobals();
     }
@@ -352,16 +352,16 @@ describe('copy', () => {
     const output = logs.join('\n');
     const quotedUrl = `'${apiUrl.replaceAll("'", `'"'"'`)}'`;
     expect(fetchMock).toHaveBeenCalledWith(apiUrl, expect.any(Object));
-    expect(output).toContain(`"JOTNOW_API_URL": ${JSON.stringify(apiUrl)}`);
+    expect(output).toContain(`"KINJOT_API_URL": ${JSON.stringify(apiUrl)}`);
     expect(output).toContain(
-      `claude mcp add jotnow -e JOTNOW_API_KEY=${GOOD_KEY} -e JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+      `claude mcp add kinjot -e KINJOT_API_KEY=${GOOD_KEY} -e KINJOT_API_URL=${quotedUrl} -- npx -y kinjot`,
     );
     expect(output).toContain(
-      `codex mcp add jotnow --env JOTNOW_API_KEY=${GOOD_KEY} --env JOTNOW_API_URL=${quotedUrl} -- npx -y jotnow`,
+      `codex mcp add kinjot --env KINJOT_API_KEY=${GOOD_KEY} --env KINJOT_API_URL=${quotedUrl} -- npx -y kinjot`,
     );
   });
 
-  it('runInit --api-url overrides JOTNOW_API_URL and carries the selected endpoint through setup', async () => {
+  it('runInit --api-url overrides KINJOT_API_URL and carries the selected endpoint through setup', async () => {
     const flagUrl = 'https://chosen.example/functions/v1/mcp-api';
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
@@ -369,21 +369,21 @@ describe('copy', () => {
     const logSpy = vi
       .spyOn(console, 'log')
       .mockImplementation((...args) => void logs.push(args.join(' ')));
-    const previousApiUrl = process.env.JOTNOW_API_URL;
-    process.env.JOTNOW_API_URL = 'https://ignored.example/functions/v1/mcp-api';
+    const previousApiUrl = process.env.KINJOT_API_URL;
+    process.env.KINJOT_API_URL = 'https://ignored.example/functions/v1/mcp-api';
     const { main } = await import('./cli.js');
     try {
       await main(['init', '--api-url', flagUrl, '--key', GOOD_KEY]);
     } finally {
-      if (previousApiUrl === undefined) delete process.env.JOTNOW_API_URL;
-      else process.env.JOTNOW_API_URL = previousApiUrl;
+      if (previousApiUrl === undefined) delete process.env.KINJOT_API_URL;
+      else process.env.KINJOT_API_URL = previousApiUrl;
       logSpy.mockRestore();
       vi.unstubAllGlobals();
     }
 
     const output = logs.join('\n');
     expect(fetchMock).toHaveBeenCalledWith(flagUrl, expect.any(Object));
-    expect(output).toContain(`"JOTNOW_API_URL": "${flagUrl}"`);
+    expect(output).toContain(`"KINJOT_API_URL": "${flagUrl}"`);
     expect(output).not.toContain('ignored.example');
   });
 });

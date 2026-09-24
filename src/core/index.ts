@@ -1,7 +1,7 @@
 // @generated — DO NOT EDIT.
 //
 // Vendored copy of packages/core/src/index.ts, emitted by
-// `pnpm --filter @jotnow/core emit:mcp-core` (plans/desktop-app.md §4.5).
+// `pnpm --filter @kinjot/core emit:mcp-core` (plans/desktop-app.md §4.5).
 // Edit the source module and re-run; CI fails on any difference.
 
 import { z } from 'zod';
@@ -213,7 +213,7 @@ export type ApiKey = z.infer<typeof ApiKeySchema>;
 export const ApiKeyPublicSchema = ApiKeySchema.omit({ key_hash: true });
 export type ApiKeyPublic = z.infer<typeof ApiKeyPublicSchema>;
 
-// API key format. A key is "jn_live_" + 43 base62 characters (~256 bits); the
+// API key format. A key is "kj_live_" + 43 base62 characters (~256 bits); the
 // stored prefix is the first 16 characters, enough to recognize a key without
 // revealing it.
 //
@@ -226,7 +226,7 @@ export type ApiKeyPublic = z.infer<typeof ApiKeyPublicSchema>;
 // supabase/tests/core-mirror.unit.test.ts and packages/mcp/src/index.test.ts.
 // The comment here used to claim the constant was simply "shared", which it
 // has never been.
-export const API_KEY_PATTERN = /^jn_live_[A-Za-z0-9]{43}$/;
+export const API_KEY_PATTERN = /^kj_live_[A-Za-z0-9]{43}$/;
 export const API_KEY_PREFIX_LENGTH = 16;
 
 const KEY_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -241,7 +241,7 @@ export function generateApiKey(): string {
       if (byte < 248 && chars.length < 43) chars.push(KEY_ALPHABET[byte % 62]!);
     }
   }
-  return `jn_live_${chars.join('')}`;
+  return `kj_live_${chars.join('')}`;
 }
 
 export function apiKeyPrefix(key: string): string {

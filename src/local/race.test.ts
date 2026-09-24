@@ -2,7 +2,7 @@
 // last item WP6 owed that no in-process test can reach).
 //
 // What it proves: several **genuinely separate OS processes** writing
-// `jotnow add`-shaped notes into one local library, all claiming the same
+// `kinjot add`-shaped notes into one local library, all claiming the same
 // folder names and the same tag names at the same moment, end with exactly one
 // folder per name, exactly one tag per name, every note present and correctly
 // linked, and no `SQLITE_BUSY` surfaced to any of them.
@@ -78,12 +78,12 @@ const NOTES: RaceNote[] = Array.from({ length: NOTES_PER_CHILD }, (_, index) => 
  *
  * Inside the package tree because the build imports `zod` and relies on
  * `"type": "module"`; under `node_modules/` because that is already ignored by
- * git and by eslint. `pnpm --filter jotnow build` is deliberately not reused —
+ * git and by eslint. `pnpm --filter kinjot build` is deliberately not reused —
  * the test must not depend on a `dist/` someone built three commits ago, and
  * must not clobber it either.
  */
 function buildPackage(): string {
-  const out = join(PACKAGE_ROOT, 'node_modules', '.cache', 'jotnow-race-build');
+  const out = join(PACKAGE_ROOT, 'node_modules', '.cache', 'kinjot-race-build');
   rmSync(out, { recursive: true, force: true });
   const tsc = createRequire(import.meta.url).resolve('typescript/bin/tsc');
   try {
@@ -128,7 +128,7 @@ async function race(buildDir: string, configDir: string): Promise<ChildOutcome[]
   for (const label of labels) {
     const child = fork(CHILD, [buildDir, configDir, label], {
       stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
-      env: { ...process.env, JOTNOW_CONFIG_DIR: configDir },
+      env: { ...process.env, KINJOT_CONFIG_DIR: configDir },
     });
     children.set(label, child);
     stderr.set(label, '');
@@ -206,11 +206,11 @@ describe('two-process get-or-create race', () => {
   });
 
   it('leaves one folder and one tag per name, every note linked, and no SQLITE_BUSY', async () => {
-    // A throwaway config root instead of a developer's real ~/.jotnow — the
-    // hand-off's "via JOTNOW_CONFIG_DIR" is discharged by passing the dir as
+    // A throwaway config root instead of a developer's real ~/.kinjot — the
+    // hand-off's "via KINJOT_CONFIG_DIR" is discharged by passing the dir as
     // an argument (the env var is also set on the children, but the argument
     // is what they read).
-    dir = mkdtempSync(join(tmpdir(), 'jotnow-race-'));
+    dir = mkdtempSync(join(tmpdir(), 'kinjot-race-'));
     makeLibraryFixture(dir);
 
     const outcomes = await race(buildDir, dir);

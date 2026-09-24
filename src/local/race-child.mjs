@@ -32,8 +32,8 @@ const importBuilt = (relative) => import(pathToFileURL(join(buildDir, relative))
 const { openLocalLibrary } = await importBuilt('local/library.js');
 const { saveNoteLocally } = await importBuilt('local/save-note.js');
 
-// The same entry point `jotnow add` and the MCP jot tool take in local mode:
-// the §5.3 handshake against the pointer under `JOTNOW_CONFIG_DIR`.
+// The same entry point `kinjot add` and the MCP jot tool take in local mode:
+// the §5.3 handshake against the pointer under `KINJOT_CONFIG_DIR`.
 const library = openLocalLibrary(configDir);
 
 const go = new Promise((resolve) => {

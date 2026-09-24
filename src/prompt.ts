@@ -21,11 +21,16 @@ export interface ReadHiddenLineOptions {
 }
 
 // Neutralizes bracketed-paste escape sequences (and anything else non-key-
-// shaped) that can ride along in a single pasted chunk; a jotnow key is only
+// shaped) that can ride along in a single pasted chunk; a kinjot key is only
 // ever letters, digits, and underscores.
 const NON_KEY_CHARS = /[^A-Za-z0-9_]/g;
 
-export function readHiddenLine({ input, output, isTTY, prompt }: ReadHiddenLineOptions): Promise<string> {
+export function readHiddenLine({
+  input,
+  output,
+  isTTY,
+  prompt,
+}: ReadHiddenLineOptions): Promise<string> {
   output.write(prompt);
 
   return new Promise<string>((resolve, reject) => {

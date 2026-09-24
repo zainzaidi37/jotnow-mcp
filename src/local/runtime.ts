@@ -65,7 +65,7 @@ export function assertNodeSupportsSqlite(version: string = process.versions.node
   throw new LocalModeError(
     `local mode needs Node ${NODE_ENGINE_RANGE} (node:sqlite is unavailable or still ` +
       `behind --experimental-sqlite on older builds); this is Node ${version}. ` +
-      `Upgrade Node, or use jotnow with an API key (\`jotnow use account\`).`,
+      `Upgrade Node, or use kinjot with an API key (\`kinjot use account\`).`,
   );
 }
 
@@ -105,8 +105,9 @@ export type SqliteDatabaseConstructor = new (
 export function loadSqlite(nodeVersion: string = process.versions.node): SqliteDatabaseConstructor {
   assertNodeSupportsSqlite(nodeVersion);
   try {
-    return (createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: SqliteDatabaseConstructor })
-      .DatabaseSync;
+    return (
+      createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: SqliteDatabaseConstructor }
+    ).DatabaseSync;
   } catch (error) {
     throw new LocalModeError(
       `local mode could not load node:sqlite on Node ${nodeVersion} (${String(error)}). ` +
