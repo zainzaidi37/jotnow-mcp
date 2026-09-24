@@ -310,6 +310,8 @@ export const NoteEmbeddingSchema = z.object({
   // rows written before the fence existed, or by a writer that omitted it;
   // note_embeddings_refuse_stale skips an update carrying a lower value.
   source_seq: syncSeq.nullable(),
+  // SHA-256 of bounded provider inputs and identity. Null means never skip.
+  input_hash: z.string().nullable(),
   created_at: timestamptz,
   updated_at: timestamptz,
 });
