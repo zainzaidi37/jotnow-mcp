@@ -66,6 +66,8 @@ kinjot append A10 --text "An update to this jot."
 kinjot recent 10
 ```
 
+Search, recall and recent leave out notes tagged `autosave`; `get` reads one by label.
+
 `kinjot add "Title" --id <uuid>` saves with a caller-supplied note ID; the
 ID may also appear before the title. `kinjot append A10 --no-snapshot` asks a
 supported backend to follow the library's history setting instead of forcing

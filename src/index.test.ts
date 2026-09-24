@@ -1,10 +1,10 @@
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import { ApiError, NotesApi } from './api.js';
-import { VERSION } from './cli.js';
+import { HELP, VERSION } from './cli.js';
 import { API_KEY_PATTERN, DEFAULT_API_URL, resolveConfig } from './config.js';
 import { saveStoredAccount, saveStoredKey } from './configFile.js';
 import { buildServer } from './server.js';
@@ -247,14 +247,14 @@ describe('NotesApi', () => {
     await api.saveNote({
       title: 't',
       body: 'b',
-      tags: ['Infra', ' NGINX', 'infra'],
+      tags: ['Infra', ' NGINX', 'infra', 'AUTOSAVE'],
       source: 'cli',
     });
 
     const body = JSON.parse(
       (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
     );
-    expect(body.tags).toEqual(['infra', 'nginx']);
+    expect(body.tags).toEqual(['infra', 'nginx', 'autosave']);
   });
 
   it('saveNote canonicalizes against cached vocabulary and returns the tags actually sent', async () => {
@@ -658,6 +658,58 @@ describe('buildServer', () => {
     expect(tools.jot!.description).toMatch(/memory/i);
   });
 
+  it('discovery descriptions explain the autosave exclusion and direct read', () => {
+    const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
+    for (const name of ['find_jots', 'list_recent_jots', 'recall_jots'] as const) {
+      expect(tools[name]!.description).toContain(
+        'Notes tagged autosave (the tag used for autosave sessions) are left out; get_jot still reads one when the user gives its label.',
+      );
+    }
+  });
+
+  it('jot and edit_jot reserve autosave for sessions, not topic tags', () => {
+    const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
+    const rule =
+      'The autosave tag is reserved for autosave sessions; never use it as a topic tag, because notes carrying it are left out of search.';
+    expect(tools.jot!.description).toContain(rule);
+    expect(tools.edit_jot!.description).toContain(rule);
+  });
+
+  it('CLI help and README name the discovery exclusion and direct read', () => {
+    expect(HELP.split('\n')).toContain(
+      'Search, recall and recent leave out notes tagged autosave; get reads one by label.',
+    );
+    expect(readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n')).toContain(
+      'Search, recall and recent leave out notes tagged `autosave`; `get` reads one by label.',
+    );
+  });
+
+  it('find_jots explains the exclusion when no search hits remain', async () => {
+    const server = buildServer(
+      new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY }, (async () =>
+        jsonResponse(200, { notes: [], total: 0 })) as typeof fetch),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    const result = await registeredTools(server).find_jots!.handler({ query: 'session' }, {});
+    expect(result.content[0]!.text).toBe(
+      'No jots matched "session". Notes tagged autosave are left out; get_jot can read one by its label.',
+    );
+  });
+
+  it('list_recent_jots explains the exclusion when no recent notes remain', async () => {
+    const server = buildServer(
+      new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY }, (async () =>
+        jsonResponse(200, { notes: [] })) as typeof fetch),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    const result = await registeredTools(server).list_recent_jots!.handler({}, {});
+    expect(result.content[0]!.text).toBe(
+      'No jots yet. Notes tagged autosave are left out; get_jot can read one by its label.',
+    );
+  });
+
   it('edit tools prohibit blind fixes and echo the resolved target', async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(200, {
@@ -768,6 +820,46 @@ describe('buildServer', () => {
     );
     expect(secondBody.tags).toEqual(['Authentication']);
     expect(second.content[0]!.text).toContain('tags: Authentication');
+  });
+
+  it('jot does not hint or cache reserved tags, while forwarding an explicitly supplied tag', async () => {
+    const responseTags = [' autosave ', 'DB', 'AuToSaVe', 'topic'];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          note: { id: 'n1', title: 'first', created_at: 'now' },
+          existing_tags: responseTags,
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse(200, {
+          note: { id: 'n2', title: 'second', created_at: 'later' },
+          existing_tags: responseTags,
+        }),
+      );
+    const server = buildServer(
+      new NotesApi(
+        { apiUrl: 'https://api.example', apiKey: GOOD_KEY },
+        fetchMock as unknown as typeof fetch,
+      ),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    const jot = registeredTools(server).jot!;
+    const first = await jot.handler({ title: 'first', body: 'b', tags: ['seed'] }, {});
+    expect(first.content[0]!.text).toBe(
+      'Jotted "first" (id n1, tags: seed).\nThe user\'s existing tags include: DB, topic — reuse these exact names on future jots.',
+    );
+
+    const second = await jot.handler({ title: 'second', body: 'b', tags: ['AUTOSAVE', 'db'] }, {});
+    const request = JSON.parse(
+      (fetchMock.mock.calls[1]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(request.tags).toEqual(['autosave', 'DB']);
+    expect(second.content[0]!.text).toBe(
+      'Jotted "second" (id n2, tags: autosave, DB).\nThe user\'s existing tags include: DB, topic — reuse these exact names on future jots.',
+    );
   });
 
   it('find_jots reports compact hits and the total without bodies', async () => {

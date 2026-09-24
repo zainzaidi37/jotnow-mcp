@@ -61,6 +61,8 @@ Usage:
   kinjot help                    print this help (also --help, -h)
   kinjot --version               print the installed version (also -v, version)
 
+Search, recall and recent leave out notes tagged autosave; get reads one by label.
+
 Environment:
   KINJOT_API_KEY   API key from the web app (Settings → API keys); overrides
                    any key stored by \`kinjot key\`
