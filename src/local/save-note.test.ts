@@ -114,6 +114,28 @@ describe('saveNoteLocally', () => {
     expect(saved.existingTags).toEqual(expect.arrayContaining(['infra', 'connection-pool']));
   });
 
+  it('uses a supplied note id while minting distinct folder and tag ids', () => {
+    const id = '12345678-1234-1234-8234-123456789abc';
+    const saved = saveNoteLocally(library, {
+      id,
+      title: 'supplied id',
+      body: 'body',
+      folder: 'Work',
+      tags: ['one'],
+    });
+    expect(saved.id).toBe(id);
+    expect(rows(library, 'notes')[0]?.id).toBe(id);
+    expect(rows(library, 'folders')[0]?.id).not.toBe(id);
+    expect(rows(library, 'tags')[0]?.id).not.toBe(id);
+  });
+
+  it('normalizes a directly supplied uppercase UUID before local storage', () => {
+    const id = 'ABCDEF12-1234-4234-8234-123456789ABC';
+    const saved = saveNoteLocally(library, { id, title: 'case', body: '' });
+    expect(saved.id).toBe(id.toLowerCase());
+    expect(rows(library, 'notes')[0]?.id).toBe(id.toLowerCase());
+  });
+
   it('reuses an existing folder case-insensitively and an existing tag exactly', () => {
     const first = saveNoteLocally(library, {
       title: 'one',

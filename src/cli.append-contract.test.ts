@@ -55,7 +55,7 @@ describe('cli.append-contract', () => {
     await main(['append', 'abc12345', '--text', 'explicit']);
     expect(append).toHaveBeenCalledWith({ id: 'abc12345', text: 'explicit', source: 'cli' });
     await main(['append', 'A10', '--typo', 'x']);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
     expect(errors.join('\n')).toContain('unknown flag --typo');
     expect(append).toHaveBeenCalledTimes(1);
   });
@@ -74,7 +74,7 @@ describe('cli.append-contract', () => {
     vi.stubEnv('KINJOT_MODE', 'local');
     stdin('text');
     await main(['append', 'A10']);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(4);
     expect(errors.join('\n')).toContain('not available in local mode');
   });
 });

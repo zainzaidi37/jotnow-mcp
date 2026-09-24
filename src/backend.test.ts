@@ -106,6 +106,13 @@ describe('local mode backend', () => {
     }
   });
 
+  it('passes a supplied note id through the local backend', async () => {
+    const id = '12345678-1234-8234-8234-123456789abc';
+    const saved = await new LocalBackend(dir).saveNote({ id, title: 'fixed id', body: '' });
+    expect(saved.id).toBe(id);
+    expect(notesIn(dbPath).map((note) => note.id)).toEqual([id]);
+  });
+
   it('the MCP jot tool writes locally, and the read tools return the desktop-app error', async () => {
     const tools = registeredTools(
       buildServer(new LocalBackend(dir), '0.0.0-test', { repoTag: null }),
@@ -284,7 +291,7 @@ describe('the CLI, through main()', () => {
   it('`kinjot search` in local mode points at the desktop app instead of half-answering', async () => {
     const { main } = await import('./cli.js');
     await main(['search', 'kong']);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(4);
     expect(errors.join('\n')).toMatch(/search is not available in local mode/);
   });
 

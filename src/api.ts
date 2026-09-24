@@ -3,9 +3,10 @@ import { wireSchemas } from './wire.js';
 import type { Config } from './config.js';
 import { normalizeTags } from './tagging.js';
 import { parseNoteLabel } from './core/note-label.js';
+import { isUuidShapeAnyCase } from './uuid.js';
 
-// Thin client for the mcp-api Edge Function. Note ids are generated here —
-// UUIDs are client-generated throughout kinjot.
+// Thin client for the mcp-api Edge Function. Note ids are generated here by
+// default — UUIDs are client-generated throughout kinjot.
 
 // Listings (search and recent) are deliberately compact: no bodies. A body
 // only enters the caller's context when it explicitly fetches one note via
@@ -50,6 +51,7 @@ export interface RecallMatch {
 }
 
 export interface SaveNoteInput {
+  id?: string;
   title: string;
   body: string;
   tags?: string[];
@@ -81,6 +83,7 @@ export interface EditNoteInput {
 export interface AppendNoteInput {
   id: string;
   text: string;
+  snapshot?: false;
   source?: 'mcp' | 'cli';
 }
 
@@ -89,12 +92,14 @@ export interface EditedNote {
   short_id?: number | null;
   title: string;
   updated_at: string;
+  snapshot_skipped?: boolean;
 }
 
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    readonly kind?: 'unsupported_action',
   ) {
     super(message);
     this.name = 'ApiError';
@@ -105,12 +110,16 @@ export class NotesApi {
   constructor(
     private readonly config: Config,
     private readonly fetchImpl: typeof fetch = fetch,
+    private readonly options: { deadlineMs?: number } = {},
   ) {}
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
+    if (input.id !== undefined && !isUuidShapeAnyCase(input.id)) {
+      throw new Error('note id must be a UUID in 8-4-4-4-12 hexadecimal form');
+    }
     const tags = input.tags ? normalizeTags(input.tags, input.vocabulary) : [];
     const response = await this.call('save_note', wireSchemas.save_note, {
-      id: crypto.randomUUID(),
+      id: input.id?.toLowerCase() ?? crypto.randomUUID(),
       title: input.title,
       body: input.body,
       // Normalized here, the single choke point, so the CLI and the MCP
@@ -182,9 +191,12 @@ export class NotesApi {
       const result = await this.call('append_note', wireSchemas.append_note, {
         ...(shortId === null ? { id: input.id } : { short_id: shortId }),
         text: input.text,
+        snapshot: input.snapshot,
         source: input.source ?? 'mcp',
       });
-      return result.note;
+      return result.snapshot_skipped === true
+        ? { ...result.note, snapshot_skipped: true }
+        : result.note;
     } catch (error) {
       throw this.agentEditError(error);
     }
@@ -196,6 +208,7 @@ export class NotesApi {
       return new ApiError(
         400,
         'This Kinjot backend does not support agent edits yet; update the deployment.',
+        'unsupported_action',
       );
     }
     if (error.status === 409 && error.message.includes('old_string must match exactly')) {
@@ -218,42 +231,68 @@ export class NotesApi {
     schema: z.ZodType<T, z.ZodTypeDef, unknown>,
     params: Record<string, unknown>,
   ): Promise<T> {
-    let response: Response;
-    try {
-      response = await this.fetchImpl(this.config.apiUrl, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.config.apiKey}`,
-        },
-        body: JSON.stringify({ action, ...params }),
-      });
-    } catch (cause) {
-      throw new ApiError(0, `could not reach ${this.config.apiUrl}: ${(cause as Error).message}`);
-    }
+    const controller = new AbortController();
+    const signal = controller.signal;
+    const timeoutError = () => new ApiError(0, `request to ${this.config.apiUrl} timed out`);
+    const timer = setTimeout(() => controller.abort(), this.options.deadlineMs ?? 30_000);
+    let onAbort: () => void;
+    const aborted = new Promise<never>((_, reject) => {
+      onAbort = () => reject(timeoutError());
+      signal.addEventListener('abort', onAbort, { once: true });
+    });
+    const operation = async (): Promise<T> => {
+      let response: Response;
+      try {
+        response = await this.fetchImpl(this.config.apiUrl, {
+          method: 'POST',
+          headers: {
+            'content-type': 'application/json',
+            authorization: `Bearer ${this.config.apiKey}`,
+          },
+          body: JSON.stringify({ action, ...params }),
+          signal,
+        });
+      } catch (cause) {
+        if (signal.aborted) throw timeoutError();
+        throw new ApiError(0, `could not reach ${this.config.apiUrl}: ${(cause as Error).message}`);
+      }
 
-    const body = (await response.json().catch(() => null)) as { error?: string } | null;
-    if (!response.ok) {
-      if (response.status === 401) {
+      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (signal.aborted) throw timeoutError();
+      if (!response.ok) {
+        if (response.status === 401) {
+          throw new ApiError(
+            401,
+            'API key was rejected — it may have been revoked. Create a new one in Settings → API keys.',
+          );
+        }
+        if (response.status === 429) {
+          throw new ApiError(
+            429,
+            'rate limit hit (60 writes/min per key); wait a minute and retry.',
+          );
+        }
         throw new ApiError(
-          401,
-          'API key was rejected — it may have been revoked. Create a new one in Settings → API keys.',
+          response.status,
+          body?.error ?? `request failed with ${response.status}`,
         );
       }
-      if (response.status === 429) {
-        throw new ApiError(429, 'rate limit hit (60 writes/min per key); wait a minute and retry.');
-      }
-      throw new ApiError(response.status, body?.error ?? `request failed with ${response.status}`);
+      const invalidReply = (detail: string) =>
+        new ApiError(
+          response.status,
+          `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g kinjot) or, on a self-hosted deployment, update the backend.`,
+        );
+      if (body === null) throw invalidReply('no JSON response this version of Kinjot understands');
+      const parsed = schema.safeParse(body);
+      if (!parsed.success)
+        throw invalidReply('a response this version of Kinjot does not understand');
+      return parsed.data;
+    };
+    try {
+      return await Promise.race([operation(), aborted]);
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', onAbort!);
     }
-    const invalidReply = (detail: string) =>
-      new ApiError(
-        response.status,
-        `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g kinjot) or, on a self-hosted deployment, update the backend.`,
-      );
-    if (body === null) throw invalidReply('no JSON response this version of Kinjot understands');
-    const parsed = schema.safeParse(body);
-    if (!parsed.success)
-      throw invalidReply('a response this version of Kinjot does not understand');
-    return parsed.data;
   }
 }

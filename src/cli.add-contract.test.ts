@@ -82,7 +82,7 @@ describe('cli.add-contract', () => {
   ])('refuses unknown flags before saving anything: %j', async (...argv) => {
     stdin('body');
     await main(argv);
-    expect(process.exitCode).toBe(1);
+    expect(process.exitCode).toBe(2);
     expect(errors.join('\n')).toContain('--foler');
     const db = new DatabaseSync(dbPath);
     try {
@@ -102,5 +102,69 @@ describe('cli.add-contract', () => {
     } finally {
       db.close();
     }
+  });
+
+  it.each([
+    ['12345678-1234-4234-8234-123456789abc', false],
+    ['12345678-1234-8234-8234-123456789abc', true],
+    ['ABCDEF12-1234-1234-8234-123456789ABC', false],
+  ])('saves --id %s in the local library', async (id, flagFirst) => {
+    const args = flagFirst ? ['add', '--id', id, 'title'] : ['add', 'title', '--id', id];
+    await main([...args, '--body', 'body']);
+    expect(process.exitCode).toBeUndefined();
+    const db = new DatabaseSync(dbPath);
+    try {
+      expect(db.prepare('SELECT id, body FROM notes').all()).toEqual([
+        { id: id.toLowerCase(), body: 'body' },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('accepts a flag-shaped title followed by --id', async () => {
+    const id = '12345678-1234-8234-8234-123456789abc';
+    await main(['add', '--odd title', '--id', id, '--body', 'body']);
+    expect(process.exitCode).toBeUndefined();
+    const db = new DatabaseSync(dbPath);
+    try {
+      expect(db.prepare('SELECT id, title FROM notes').all()).toEqual([
+        { id, title: '--odd title' },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('does not treat --id with a missing value as a title', async () => {
+    await main(['add', '--id', '--folder', 'X']);
+    expect(process.exitCode).toBe(2);
+    const db = new DatabaseSync(dbPath);
+    try {
+      expect(db.prepare('SELECT id FROM notes').all()).toEqual([]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('refuses malformed --id before opening or writing the local library', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    rmSync(dbPath);
+    await main(['add', 'title', '--id', 'bad', '--body', 'body']);
+    expect(process.exitCode).toBe(2);
+    expect(errors.join('\n')).toContain('--id must be a UUID');
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(() => new DatabaseSync(dbPath, { readOnly: true })).toThrow();
+    vi.unstubAllGlobals();
+  });
+
+  it('refuses a flag that needs a value and an extra positional', async () => {
+    await main(['add', 'title', '--body']);
+    expect(process.exitCode).toBe(2);
+    expect(errors.join('\n')).toContain('needs a value');
+    process.exitCode = undefined;
+    await main(['add', 'title', 'extra', '--body', 'body']);
+    expect(process.exitCode).toBe(2);
   });
 });

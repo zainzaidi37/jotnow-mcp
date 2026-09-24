@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { ApiError, NotesApi, type RecallMatch, type SearchHit, type SearchResult } from './api.js';
-import { resolveBackend, serveBackend } from './backend.js';
+import { LocalUnavailableError, resolveBackend } from './backend.js';
 import {
   API_KEY_PATTERN,
   DEFAULT_API_URL,
@@ -19,8 +19,9 @@ import { openLocalLibrary } from './local/library.js';
 import { pointerExists, pointerPath } from './local/pointer.js';
 import { resolveMode } from './mode.js';
 import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
-import { serveStdio } from './server.js';
 import { noteHandle } from './handle.js';
+import { isUuidShapeAnyCase } from './uuid.js';
+import { appendTextUsageError } from './append-text.js';
 
 /**
  * The running version, read from package.json rather than restated here, so the
@@ -40,12 +41,12 @@ export const HELP = `Kinjot — jot and find notes from the terminal
 For terminal use anywhere: npm i -g kinjot, then kinjot key
 
 Usage:
-  kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>]
+  kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>] [--id <uuid>]
                                  (body is read from stdin when piped)
   kinjot search <query>
   kinjot recall <query>          semantic search by meaning (Pro plan)
-  kinjot get <label|id-prefix|uuid>
-  kinjot append <label|id-prefix|uuid> [--text <text>]
+  kinjot get <label|id-prefix|uuid> [--json]
+  kinjot append <label|id-prefix|uuid> [--text <text>] [--no-snapshot]
                                  (text is read from stdin when piped)
   kinjot recent [n]
   kinjot                         run the MCP server on stdio (for MCP configs)
@@ -74,7 +75,15 @@ Local mode writes to the Kinjot desktop app's local library instead of your
 account. It needs the desktop app (which creates that library), and only
 \`kinjot add\` and the MCP jot tool work there — search, recall, get and recent
 live in the app.
+
+Exit codes: 0 done; 1 request or other failure; 2 usage error; 3 note not
+found; 4 unavailable for this library; 5 append done but a history copy was
+kept despite --no-snapshot.
 `;
+
+class UsageError extends Error {}
+
+const VALUELESS_FLAGS = new Set(['--no-snapshot', '--json']);
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -82,9 +91,13 @@ function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]!;
     if (arg.startsWith('--')) {
+      if (VALUELESS_FLAGS.has(arg)) {
+        flags.set(arg.slice(2), 'true');
+        continue;
+      }
       const value = argv[i + 1];
       if (value === undefined || value.startsWith('--')) {
-        throw new Error(`flag ${arg} needs a value`);
+        throw new UsageError(`flag ${arg} needs a value`);
       }
       flags.set(arg.slice(2), value);
       i++;
@@ -133,8 +146,17 @@ export function selfHostApiUrl(project: string): string {
 
 function rejectUnknownFlags(flags: ReadonlyMap<string, string>, allowed: readonly string[]): void {
   for (const flag of flags.keys()) {
-    if (!allowed.includes(flag)) throw new Error(`unknown flag --${flag}`);
+    if (!allowed.includes(flag)) throw new UsageError(`unknown flag --${flag}`);
   }
+}
+
+/** Escape characters that terminals can interpret, without changing JSON.parse's result. */
+export function terminalSafeJson(value: unknown): string {
+  return JSON.stringify(value).replace(
+    // eslint-disable-next-line no-control-regex
+    /[\u0000-\u001f\u007f-\u009f\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069\u2028\u2029]/g,
+    (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`,
+  );
 }
 
 async function readStdin(): Promise<string> {
@@ -434,7 +456,7 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
 function runUse(positional: string[], env: NodeJS.ProcessEnv): void {
   const wanted = positional[0];
   if (wanted !== 'local' && wanted !== 'account') {
-    throw new Error('usage: kinjot use local|account');
+    throw new UsageError('usage: kinjot use local|account');
   }
   const mode: KinjotMode = wanted;
   const dir = configDir(env);
@@ -597,6 +619,10 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         console.log(HELP);
         return;
       }
+      const [{ serveBackend }, { serveStdio }] = await Promise.all([
+        import('./backend.js'),
+        import('./server.js'),
+      ]);
       await serveStdio(serveBackend(process.env), VERSION);
       return;
     }
@@ -610,35 +636,50 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       command === 'add' &&
       rest[0]?.startsWith('--') &&
       (rest.length === 1 ? !/^--[^\s=]+$/.test(rest[0]) : rest[1]!.startsWith('--')) &&
-      !['--body', '--tags', '--folder'].includes(rest[0]);
+      !['--body', '--tags', '--folder', '--id'].includes(rest[0]);
     const { positional, flags } = parseFlags(titleFirst ? rest.slice(1) : rest);
     if (titleFirst) positional.unshift(rest[0]!);
     switch (command) {
       case 'init':
+        if (positional.length)
+          throw new UsageError('usage: kinjot init --key <key> [--api-url <url>]');
         await runInit(flags, process.env);
         return;
       case 'init-selfhost':
+        if (positional.length)
+          throw new UsageError('usage: kinjot init-selfhost [--api-url <url>] [--key <key>]');
         await runInitSelfHost({ flags });
         return;
       case 'key':
+        if (positional.length) throw new UsageError('usage: kinjot key [--api-url <url>]');
         await runKey({ flags });
         return;
       case 'use':
+        rejectUnknownFlags(flags, []);
+        if (positional.length !== 1) throw new UsageError('usage: kinjot use local|account');
         runUse(positional, process.env);
         return;
       case 'where':
+        rejectUnknownFlags(flags, []);
+        if (positional.length) throw new UsageError('usage: kinjot where');
         runWhere(process.env);
         return;
       case 'add': {
-        rejectUnknownFlags(flags, ['body', 'tags', 'folder']);
+        rejectUnknownFlags(flags, ['body', 'tags', 'folder', 'id']);
         const title = positional[0];
-        if (!title)
-          throw new Error(
-            'usage: kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>] (body is read from stdin when piped)',
+        if (!title || positional.length !== 1)
+          throw new UsageError(
+            'usage: kinjot add <title> [--body <text>] [--tags a,b] [--folder <name>] [--id <uuid>] (body is read from stdin when piped)',
           );
+        const suppliedId = flags.get('id');
+        if (suppliedId !== undefined && !isUuidShapeAnyCase(suppliedId)) {
+          throw new UsageError('--id must be a UUID in 8-4-4-4-12 hexadecimal form');
+        }
+        const id = suppliedId?.toLowerCase();
         const body = flags.get('body') ?? (process.stdin.isTTY ? '' : await readStdin());
         const api = resolveBackend(process.env).backend;
         const note = await api.saveNote({
+          ...(id === undefined ? {} : { id }),
           title,
           body,
           tags: flags
@@ -653,36 +694,49 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         return;
       }
       case 'append': {
-        rejectUnknownFlags(flags, ['text']);
+        rejectUnknownFlags(flags, ['text', 'no-snapshot']);
         const id = positional[0];
         if (!id || positional.length !== 1)
-          throw new Error('usage: kinjot append <label|id-prefix|uuid> [--text <text>]');
+          throw new UsageError(
+            'usage: kinjot append <label|id-prefix|uuid> [--text <text>] [--no-snapshot]',
+          );
         const text = flags.get('text') ?? (process.stdin.isTTY ? '' : await readStdin());
-        if (!text) throw new Error('append text must be non-empty');
+        const textError = appendTextUsageError(text);
+        if (textError) throw new UsageError(textError);
         const note = await resolveBackend(process.env).backend.appendNote({
           id,
           text,
+          ...(flags.has('no-snapshot') ? { snapshot: false } : {}),
           source: 'cli',
         });
         console.log(`Appended to ${terminalSafe(noteHandle(note))} "${terminalSafe(note.title)}".`);
+        if (flags.has('no-snapshot') && note.snapshot_skipped !== true) process.exitCode = 5;
         return;
       }
       case 'search': {
+        rejectUnknownFlags(flags, []);
         const query = positional.join(' ').trim();
-        if (!query) throw new Error('usage: kinjot search <query>');
+        if (!query) throw new UsageError('usage: kinjot search <query>');
         printSearch(await resolveBackend(process.env).backend.searchNotes(query), query);
         return;
       }
       case 'recall': {
+        rejectUnknownFlags(flags, []);
         const query = positional.join(' ').trim();
-        if (!query) throw new Error('usage: kinjot recall <query>');
+        if (!query) throw new UsageError('usage: kinjot recall <query>');
         printRecall(await resolveBackend(process.env).backend.recallNotes(query), query);
         return;
       }
       case 'get': {
+        rejectUnknownFlags(flags, ['json']);
         const id = positional[0];
-        if (!id) throw new Error('usage: kinjot get <label|id-prefix|uuid>');
+        if (!id || positional.length !== 1)
+          throw new UsageError('usage: kinjot get <label|id-prefix|uuid> [--json]');
         const note = await resolveBackend(process.env).backend.getNote(id);
+        if (flags.has('json')) {
+          console.log(terminalSafeJson(note));
+          return;
+        }
         const tags = note.tags.map(terminalSafe).join(', ') || 'none';
         console.log(
           `${noteHandle(note)}  ${terminalSafe(note.title) || '(untitled)'}  [${tags}]  (updated ${note.updated_at.slice(0, 10)})`,
@@ -692,25 +746,29 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         return;
       }
       case 'recent': {
+        rejectUnknownFlags(flags, []);
+        if (positional.length > 1) throw new UsageError('usage: kinjot recent [n]');
         const limit = positional[0] ? Number.parseInt(positional[0], 10) : 10;
-        if (Number.isNaN(limit)) throw new Error('usage: kinjot recent [n]');
+        if (Number.isNaN(limit)) throw new UsageError('usage: kinjot recent [n]');
         (await resolveBackend(process.env).backend.listRecentNotes(limit)).forEach(printHit);
         return;
       }
       case 'help':
       case '--help':
       case '-h':
+        // `kinjot help add` and the like still print the help.
         console.log(HELP);
         return;
-      // The README points users at "0.4.3 or newer"; this is how the installed
-      // CLI answers that. Same constant the MCP handshake reports.
+      // This is the same package version the MCP handshake reports.
       case 'version':
       case '--version':
       case '-v':
+        rejectUnknownFlags(flags, []);
+        if (positional.length) throw new UsageError('usage: kinjot --version');
         console.log(VERSION);
         return;
       default:
-        throw new Error(`unknown command "${command}" — run kinjot help`);
+        throw new UsageError(`unknown command "${command}" — run kinjot help`);
     }
   } catch (error) {
     const message =
@@ -718,6 +776,14 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     // Error messages interpolate pointer- and server-derived strings
     // (db_path, API error bodies) — the same smuggling surface as a title.
     console.error(`error: ${terminalSafe(message)}`);
-    process.exitCode = 1;
+    process.exitCode =
+      error instanceof UsageError
+        ? 2
+        : error instanceof LocalUnavailableError ||
+            (error instanceof ApiError && error.kind === 'unsupported_action')
+          ? 4
+          : error instanceof ApiError && error.status === 404 && error.message === 'note not found'
+            ? 3
+            : 1;
   }
 }

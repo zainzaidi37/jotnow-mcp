@@ -21,6 +21,7 @@ import {
 } from '../core/index.js';
 import type { SavedNote } from '../api.js';
 import { normalizeTags } from '../tagging.js';
+import { isUuidShapeAnyCase } from '../uuid.js';
 import {
   busyRefusal,
   isSqliteBusy,
@@ -30,6 +31,7 @@ import {
 import type { SqliteDatabase } from './runtime.js';
 
 export interface LocalSaveNoteInput {
+  readonly id?: string;
   readonly title: string;
   readonly body: string;
   readonly tags?: string[];
@@ -130,6 +132,9 @@ export function applySaveNotePlan(
  * scoping at the query is the habit that keeps that true.
  */
 export function saveNoteLocally(library: LocalLibrary, input: LocalSaveNoteInput): SavedNote {
+  if (input.id !== undefined && !isUuidShapeAnyCase(input.id)) {
+    throw new Error('note id must be a UUID in 8-4-4-4-12 hexadecimal form');
+  }
   const { db, workspaceId } = library;
   // Normalized through the same choke point the API path uses, so tag hygiene
   // cannot differ by mode.
@@ -161,7 +166,7 @@ export function saveNoteLocally(library: LocalLibrary, input: LocalSaveNoteInput
           newId: () => randomUUID(),
         },
         {
-          id: randomUUID(),
+          id: input.id?.toLowerCase() ?? randomUUID(),
           title: input.title,
           body: input.body,
           tags: input.tags ? tags : undefined,

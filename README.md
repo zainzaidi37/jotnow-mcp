@@ -66,6 +66,23 @@ kinjot append A10 --text "An update to this jot."
 kinjot recent 10
 ```
 
+`kinjot add "Title" --id <uuid>` saves with a caller-supplied note ID; the
+ID may also appear before the title. `kinjot append A10 --no-snapshot` asks a
+supported backend to follow the library's history setting instead of forcing
+a history copy. `kinjot get A10 --json` prints one JSON object with the exact
+stored body, with terminal controls escaped.
+
+CLI exit codes:
+
+| Code | Meaning                                                                            |
+| ---- | ---------------------------------------------------------------------------------- |
+| 0    | Done.                                                                              |
+| 1    | Request, timeout, backend, or other failure.                                       |
+| 2    | Usage error, including an invalid ID or unknown flag.                              |
+| 3    | The note was definitely not found.                                                 |
+| 4    | The operation is unavailable for this library or backend.                          |
+| 5    | The append succeeded, but the backend kept a history copy despite `--no-snapshot`. |
+
 Without a global install, put `npx` in front of any command, for example
 `npx kinjot recent`. `npx kinjot key` saves the key the same way.
 

@@ -40,6 +40,7 @@ export const wireSchemas = {
     }),
   }),
   append_note: z.object({
+    snapshot_skipped: z.literal(true).optional().catch(undefined),
     note: z.object({
       id: z.string(),
       short_id: z.number().int().nullable().optional(),

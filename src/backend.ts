@@ -42,8 +42,10 @@ export interface JotBackend {
  * — and reimplementing any of them against SQLite in the CLI would be a second
  * search stack to keep in step with the app's. So each one names the app.
  */
-function notInLocalMode(what: string): LocalModeError {
-  return new LocalModeError(
+export class LocalUnavailableError extends LocalModeError {}
+
+function notInLocalMode(what: string): LocalUnavailableError {
+  return new LocalUnavailableError(
     `${what} is not available in local mode — open the Kinjot desktop app to browse, search ` +
       `and recall your local library. (\`kinjot add\` writes to it; \`kinjot where\` shows ` +
       `which library that is.)`,
@@ -67,6 +69,7 @@ export class LocalBackend implements JotBackend {
     try {
       return saveNoteLocally(library, {
         title: input.title,
+        id: input.id,
         body: input.body,
         tags: input.tags,
         folder: input.folder,
