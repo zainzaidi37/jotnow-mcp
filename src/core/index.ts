@@ -659,6 +659,52 @@ export const TidyChangeSchema = z
   });
 export type TidyChange = z.infer<typeof TidyChangeSchema>;
 
+export const AgentActivityObjectSchema = z.object({
+  id: uuid,
+  name: z.string(),
+  created: z.literal(true).optional(),
+});
+export type AgentActivityObject = z.infer<typeof AgentActivityObjectSchema>;
+
+const AgentActivityBaseSchema = z.object({
+  id: uuid,
+  user_id: uuid,
+  note_id: uuid,
+  api_key_id: uuid,
+  actor: z.enum(['mcp', 'cli']),
+  version_id: uuid.nullable(),
+  created_at: timestamptz,
+});
+
+export const AgentActivitySchema = z.discriminatedUnion('kind', [
+  AgentActivityBaseSchema.extend({
+    kind: z.literal('capture'),
+    detail: z.object({
+      folder: AgentActivityObjectSchema.nullable(),
+      tags: z.array(AgentActivityObjectSchema),
+    }),
+  }),
+  AgentActivityBaseSchema.extend({
+    kind: z.literal('edit'),
+    detail: z.object({
+      title_changed: z.literal(true).optional(),
+      body: z
+        .object({ removed: z.number().int().nonnegative(), added: z.number().int().nonnegative() })
+        .optional(),
+      tags_added: z.array(AgentActivityObjectSchema).optional(),
+      tags_removed: z.array(AgentActivityObjectSchema).optional(),
+      folder_from: AgentActivityObjectSchema.nullable().optional(),
+      folder_to: AgentActivityObjectSchema.optional(),
+      pin_cleared: z.object({ pinned_in: uuid, pinned_at: timestamptz.nullable() }).optional(),
+    }),
+  }),
+  AgentActivityBaseSchema.extend({
+    kind: z.literal('append'),
+    detail: z.object({ added: z.number().int().nonnegative() }),
+  }),
+]);
+export type AgentActivity = z.infer<typeof AgentActivitySchema>;
+
 export const TidyJobSchema = z.object({
   note_id: uuid,
   user_id: uuid,
