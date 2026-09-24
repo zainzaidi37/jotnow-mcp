@@ -64,6 +64,10 @@ describe('runKey', () => {
     expect(stdout.all()).toContain('mcpServers');
     expect(stdout.all()).toContain('claude mcp add kinjot -- npx -y kinjot');
     expect(stdout.all()).toContain('codex mcp add kinjot -- npx -y kinjot');
+    // The one-line commands come first; the JSON is the fallback for other clients.
+    const output = stdout.all();
+    expect(output.indexOf('claude mcp add')).toBeLessThan(output.indexOf('codex mcp add'));
+    expect(output.indexOf('codex mcp add')).toBeLessThan(output.indexOf('mcpServers'));
   });
 
   it('treats a legacy production URL as the default when saving a key', async () => {

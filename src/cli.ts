@@ -214,15 +214,15 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
     },
   };
 
-  console.log('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n');
-  console.log(JSON.stringify(mcpConfig, null, 2));
   const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e KINJOT_API_URL=${shellQuote(apiUrl)}`;
   const codexApiUrl =
     apiUrl === DEFAULT_API_URL ? '' : ` --env KINJOT_API_URL=${shellQuote(apiUrl)}`;
-  console.log('\nOr with the Claude Code CLI:\n');
+  console.log('With the Claude Code CLI:\n');
   console.log(`claude mcp add kinjot -e KINJOT_API_KEY=${key}${claudeApiUrl} -- npx -y kinjot`);
-  console.log('\nOr with the Codex CLI:\n');
+  console.log('\nWith the Codex CLI:\n');
   console.log(`codex mcp add kinjot --env KINJOT_API_KEY=${key}${codexApiUrl} -- npx -y kinjot`);
+  console.log("\nOr add this to any other MCP client's JSON config (such as .mcp.json):\n");
+  console.log(JSON.stringify(mcpConfig, null, 2));
   console.log('\nThen tell your agent to "jot that down" — done.');
   console.log(
     apiUrl === DEFAULT_API_URL
@@ -410,18 +410,18 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
       'warning: KINJOT_API_KEY or KINJOT_API_URL is set in your environment; environment values override the saved self-host configuration.\n',
     );
   }
-  stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
-  const envBlock = { KINJOT_API_KEY: key, KINJOT_API_URL: apiUrl };
-  stdout.write(
-    `${JSON.stringify({ mcpServers: { kinjot: { command: 'npx', args: ['-y', 'kinjot'], env: envBlock } } }, null, 2)}\n`,
-  );
-  stdout.write('\nOr with the Claude Code CLI:\n\n');
+  stdout.write('With the Claude Code CLI:\n\n');
   stdout.write(
     `claude mcp add kinjot -e KINJOT_API_KEY=${key} -e KINJOT_API_URL=${shellQuote(apiUrl)} -- npx -y kinjot\n`,
   );
-  stdout.write('\nOr with the Codex CLI:\n\n');
+  stdout.write('\nWith the Codex CLI:\n\n');
   stdout.write(
     `codex mcp add kinjot --env KINJOT_API_KEY=${key} --env KINJOT_API_URL=${shellQuote(apiUrl)} -- npx -y kinjot\n`,
+  );
+  stdout.write("\nOr add this to any other MCP client's JSON config (such as .mcp.json):\n\n");
+  const envBlock = { KINJOT_API_KEY: key, KINJOT_API_URL: apiUrl };
+  stdout.write(
+    `${JSON.stringify({ mcpServers: { kinjot: { command: 'npx', args: ['-y', 'kinjot'], env: envBlock } } }, null, 2)}\n`,
   );
 }
 
@@ -572,18 +572,18 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
       ? 'Saved — Kinjot will use this key automatically from now on, no env var needed.\n\n'
       : 'Saved — Kinjot will use this key and custom endpoint automatically.\n\n',
   );
-  stdout.write('Add this to a JSON-based MCP client config (.mcp.json for Claude Code):\n\n');
+  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e KINJOT_API_URL=${shellQuote(apiUrl)}`;
+  const codexApiUrl =
+    apiUrl === DEFAULT_API_URL ? '' : ` --env KINJOT_API_URL=${shellQuote(apiUrl)}`;
+  stdout.write('With the Claude Code CLI:\n\n');
+  stdout.write(`claude mcp add kinjot${claudeApiUrl} -- npx -y kinjot\n`);
+  stdout.write('\nWith the Codex CLI:\n\n');
+  stdout.write(`codex mcp add kinjot${codexApiUrl} -- npx -y kinjot\n`);
+  stdout.write("\nOr add this to any other MCP client's JSON config (such as .mcp.json):\n\n");
   const envBlock = apiUrl === DEFAULT_API_URL ? undefined : { KINJOT_API_URL: apiUrl };
   stdout.write(
     `${JSON.stringify({ mcpServers: { kinjot: { command: 'npx', args: ['-y', 'kinjot'], ...(envBlock ? { env: envBlock } : {}) } } }, null, 2)}\n`,
   );
-  const claudeApiUrl = apiUrl === DEFAULT_API_URL ? '' : ` -e KINJOT_API_URL=${shellQuote(apiUrl)}`;
-  const codexApiUrl =
-    apiUrl === DEFAULT_API_URL ? '' : ` --env KINJOT_API_URL=${shellQuote(apiUrl)}`;
-  stdout.write('\nOr with the Claude Code CLI:\n\n');
-  stdout.write(`claude mcp add kinjot${claudeApiUrl} -- npx -y kinjot\n`);
-  stdout.write('\nOr with the Codex CLI:\n\n');
-  stdout.write(`codex mcp add kinjot${codexApiUrl} -- npx -y kinjot\n`);
 }
 
 export async function main(argv: string[] = process.argv.slice(2)): Promise<void> {
