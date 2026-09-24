@@ -877,7 +877,7 @@ export const RecallPeriodUsageSchema = z.object({
    * Dictation counters, `.optional()` for the same reason the voice fields on
    * {@link UsageLimitsSchema} are. This RPC's return shape is a property of
    * the *database*, and on BYO the database is whatever the operator last ran
-   * `update` against while `byo.jotnow.dev` serves them the newest client. A
+   * `update` against while `byo.kinjot.com` serves them the newest client. A
    * backend one release behind returns five columns, not seven; requiring
    * these would throw on the Usage tab of every operator who has not updated,
    * which is the normal state during a rollout rather than a fault. Read them
@@ -928,7 +928,7 @@ export const UsageLimitsSchema = z.object({
    * Dictation's separate ceiling and the prices behind it
    * (`plans/voice-to-text.md` §3f). **Both are `.optional()`, and that is
    * load-bearing rather than tidy.** The frontend ↔ Edge Function axis is
-   * ungated on BYO: `byo.jotnow.dev` serves catalog head to every operator
+   * ungated on BYO: `byo.kinjot.com` serves catalog head to every operator
    * while the backend they own is whatever they last ran `update` against, so
    * a newer client routinely meets a `usage-limits` that has never heard of
    * voice. **Absence is the normal case during a rollout, not a fault** —
@@ -1114,9 +1114,10 @@ export type BillingLinks = z.infer<typeof BillingLinksSchema>;
 // clients treat any other 200 as an ambiguous, possibly partial deletion).
 export const DeletedAccountResponseSchema = z.object({ deleted: z.literal(true) }).strict();
 
-// The `jotnow_schema_compatibility()` RPC's response: one integer naming the
+// The `kinjot_schema_compatibility()` RPC's response: one integer naming the
 // sync-protocol epoch the connected database's schema speaks (migration
-// 20260910033812). WP3 of `plans/byo-supabase-implementation.md`.
+// 20260924062132, the kinjot-named twin of 20260910033812). WP3 of
+// `plans/byo-supabase-implementation.md`.
 //
 // Strict on purpose. A database whose answer the client cannot recognize is
 // not a database it should sync against: a float, a string, a negative number
