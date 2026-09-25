@@ -14,20 +14,24 @@ const ALL = [
   'edit_jot',
   'find_jots',
   'get_jot',
+  'inbox',
   'jot',
   'list_recent_jots',
+  'notify',
   'recall_jots',
   'upload_image',
 ];
 const READ_CREATE = [
   'find_jots',
   'get_jot',
+  'inbox',
   'jot',
   'list_recent_jots',
+  'notify',
   'recall_jots',
   'upload_image',
 ];
-const READ = ['find_jots', 'get_jot', 'list_recent_jots', 'recall_jots'];
+const READ = ['find_jots', 'get_jot', 'inbox', 'list_recent_jots', 'recall_jots'];
 
 // Each call gets an empty config directory of its own, so a key or mode that
 // `kinjot key` / `kinjot use` stored on the machine running the suite can

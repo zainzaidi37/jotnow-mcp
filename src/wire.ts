@@ -43,6 +43,41 @@ const searchHit = z.object({
 
 export const wireSchemas = {
   image_upload: imageUploadGrantSchema,
+  inbox_mute_state: z.object({ send_kinds: z.array(z.string()), key_muted: z.boolean() }),
+  inbox_notify: z.object({
+    id: z.string(),
+    status: z.enum(['sent', 'repeated', 'duplicate', 'muted']),
+    repeat_count: z.number(),
+    send_kinds: z.array(z.string()),
+    key_muted: z.boolean(),
+    truncated: z.array(z.string()),
+  }),
+  inbox_list: z.object({
+    items: z.array(
+      z.object({
+        id: z.string(),
+        kind: z.string(),
+        title: z.string(),
+        detail: z.string().nullable(),
+        context: z
+          .object({
+            agent: z.string().optional(),
+            repo: z.string().optional(),
+            branch: z.string().optional(),
+            prs: z.array(z.string()).optional(),
+            note: z.string().optional(),
+            session_id: z.string().optional(),
+          })
+          .passthrough(),
+        repeat_count: z.number(),
+        created_at: z.string(),
+        surfaced_at: z.string(),
+        key_name: z.string().nullable(),
+      }),
+    ),
+    other_open: z.number(),
+  }),
+  inbox_resolve: z.object({ id: z.string(), status: z.literal('resolved') }),
   key_info: z.object({ access: z.enum(API_KEY_ACCESS_LEVELS) }),
   save_note: z.object({
     note: z.object({ id: z.string(), title: z.string(), created_at: z.string() }),

@@ -3,6 +3,7 @@ import {
   ApiError,
   KEY_INFO_DEADLINE_MS,
   NotesApi,
+  type ApiErrorKind,
   type RecallMatch,
   type SearchHit,
   type SearchResult,
@@ -29,6 +30,9 @@ import { readHiddenLine, type ReadHiddenLineOptions } from './prompt.js';
 import { noteHandle } from './handle.js';
 import { isUuidShapeAnyCase } from './uuid.js';
 import { appendTextUsageError } from './append-text.js';
+import { gitContext } from './git-context.js';
+import { cachedMuteState, refreshMute } from './inbox-cache.js';
+import { parseNoteLabel } from './core/note-label.js';
 
 /**
  * The running version, read from package.json rather than restated here, so the
@@ -57,6 +61,13 @@ Usage:
                                  (text is read from stdin when piped)
   kinjot upload-image <path> [--alt <text>] [--json]
   kinjot recent [n]
+  kinjot notify <title> --kind question|blocker|handoff|done|waiting
+                [--detail <text>] [--pr <url>] [--note <label>] [--cwd <dir>]
+                [--session <id>] [--agent <name>] [--id <uuid>]
+                [--input-json] [--json] [--no-cache]
+                (detail is read from stdin when piped; --input-json reads title and detail from stdin)
+  kinjot inbox [--all] [--kind handoff|question|blocker|done|any] [--cwd <dir>] [--json]
+  kinjot inbox resolve <id> [--note <text>]
   kinjot                         run the MCP server on stdio (for MCP configs)
   kinjot init --key kj_live_... [--api-url <url>]
                                  validate a key and print the MCP config block
@@ -83,17 +94,30 @@ unset.
 
 Local mode writes to the Kinjot desktop app's local library instead of your
 account. It needs the desktop app (which creates that library), and only
-\`kinjot add\` and the MCP jot tool work there — search, recall, get and recent
+\`kinjot add\` and the MCP jot tool work there — search, recall, get, recent and Inbox
 live in the app.
 
-Exit codes: 0 done; 1 request or other failure; 2 usage error; 3 note not
-found; 4 unavailable for this library; 5 append done but a history copy was
+Exit codes: 0 done; 1 ambiguous request failure (network, timeout, 5xx, 401, 429);
+2 usage or definite Inbox refusal; 3 note or Inbox item not found;
+4 unavailable for this library, old backend, or key access; 5 append done but a history copy was
 kept despite --no-snapshot.
 `;
 
 class UsageError extends Error {}
 
-const VALUELESS_FLAGS = new Set(['--no-snapshot', '--json']);
+const VALUELESS_FLAGS = new Set(['--no-snapshot', '--json', '--all', '--no-cache', '--input-json']);
+const DEFINITE_INBOX_REFUSALS: ReadonlySet<ApiErrorKind> = new Set([
+  'invalid_id',
+  'invalid_kind',
+  'invalid_source',
+  'invalid_context',
+  'invalid_title',
+  'invalid_session',
+  'invalid_request',
+  'inbox_access_off',
+  'id_conflict',
+  'inbox_ambiguous_id',
+]);
 
 function parseFlags(argv: string[]): { positional: string[]; flags: Map<string, string> } {
   const positional: string[] = [];
@@ -661,10 +685,24 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     // flag-shaped token (`add --foldr`), which reads as a valueless flag, not
     // a one-word title.
     const titleFirst =
-      command === 'add' &&
+      (command === 'add' || command === 'notify') &&
       rest[0]?.startsWith('--') &&
       (rest.length === 1 ? !/^--[^\s=]+$/.test(rest[0]) : rest[1]!.startsWith('--')) &&
-      !['--body', '--tags', '--folder', '--id'].includes(rest[0]);
+      !(command === 'add'
+        ? ['--body', '--tags', '--folder', '--id'].includes(rest[0])
+        : [
+            '--kind',
+            '--detail',
+            '--pr',
+            '--note',
+            '--cwd',
+            '--session',
+            '--agent',
+            '--id',
+            '--input-json',
+            '--json',
+            '--no-cache',
+          ].includes(rest[0]));
     const { positional, flags } = parseFlags(titleFirst ? rest.slice(1) : rest);
     if (titleFirst) positional.unshift(rest[0]!);
     switch (command) {
@@ -719,6 +757,187 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
           source: 'cli',
         });
         console.log(`Jotted "${terminalSafe(note.title)}" (id ${terminalSafe(note.id)}).`);
+        return;
+      }
+      case 'notify': {
+        rejectUnknownFlags(flags, [
+          'kind',
+          'detail',
+          'pr',
+          'note',
+          'cwd',
+          'session',
+          'agent',
+          'id',
+          'input-json',
+          'json',
+          'no-cache',
+        ]);
+        const inputJson = flags.has('input-json');
+        if ((inputJson && positional.length) || (!inputJson && positional.length !== 1))
+          throw new UsageError('usage: kinjot notify <title> --kind <kind> [--input-json]');
+        let title = positional[0];
+        let detail = flags.get('detail');
+        if (inputJson) {
+          if (flags.has('detail'))
+            throw new UsageError('--detail cannot be combined with --input-json');
+          let value: unknown;
+          try {
+            value = JSON.parse(await readStdin());
+          } catch {
+            throw new UsageError('--input-json needs a JSON object');
+          }
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            Array.isArray(value) ||
+            typeof (value as { title?: unknown }).title !== 'string' ||
+            ((value as { detail?: unknown }).detail !== undefined &&
+              typeof (value as { detail?: unknown }).detail !== 'string')
+          )
+            throw new UsageError('--input-json needs {"title":string,"detail"?:string}');
+          title = (value as { title: string }).title;
+          detail = (value as { detail?: string }).detail;
+        } else if (detail === undefined && !process.stdin.isTTY) {
+          detail = (await readStdin()) || undefined;
+        }
+        if (!title) throw new UsageError('notify title is required');
+        const kind = flags.get('kind');
+        if (!kind || !['question', 'blocker', 'handoff', 'done', 'waiting'].includes(kind))
+          throw new UsageError('--kind must be question, blocker, handoff, done, or waiting');
+        const session = flags.get('session');
+        if (session !== undefined && !/^[A-Za-z0-9_-]{1,100}$/.test(session))
+          throw new UsageError('--session is invalid');
+        if (kind === 'waiting' && !session)
+          throw new ApiError(400, 'invalid_session', 'invalid_session');
+        const agent = flags.get('agent');
+        if (agent !== undefined && !/^[a-z0-9._-]{1,40}$/.test(agent))
+          throw new UsageError('--agent is invalid');
+        const id = flags.get('id') ?? crypto.randomUUID();
+        if (!isUuidShapeAnyCase(id)) throw new UsageError('--id must be a UUID');
+        const note = flags.get('note');
+        if (note !== undefined && parseNoteLabel(note) === null)
+          throw new UsageError('--note must be a jot label');
+        const prs = rest
+          .flatMap((arg, index) => (arg === '--pr' ? [rest[index + 1]!] : []))
+          .filter((pr) =>
+            /^https:\/\/github\.com\/[A-Za-z0-9-]+\/[A-Za-z0-9._-]+\/pull\/[1-9][0-9]*$/.test(pr),
+          )
+          .slice(0, 3);
+        const { backend, resolution } = resolveBackend(process.env);
+        const config = resolution.mode === 'account' ? resolveConfig(process.env) : undefined;
+        const cacheDir = configDir(process.env);
+        const cacheState =
+          config && !flags.has('no-cache') ? cachedMuteState(cacheDir, config, kind) : 'unknown';
+        let answer:
+          | {
+              id: string;
+              status: 'sent' | 'repeated' | 'duplicate' | 'muted';
+              repeat_count: number;
+            }
+          | undefined;
+        if (cacheState === 'muted') answer = { id, status: 'muted', repeat_count: 0 };
+        if (kind === 'waiting' && cacheState === 'unknown') {
+          const state = await backend.inboxMuteState();
+          if (config) refreshMute(cacheDir, config, state);
+          if (state.key_muted || !state.send_kinds.includes(kind))
+            answer = { id, status: 'muted', repeat_count: 0 };
+        }
+        if (!answer) {
+          const sent = await backend.inboxNotify({
+            id: id.toLowerCase(),
+            kind: kind as 'question' | 'blocker' | 'handoff' | 'done' | 'waiting',
+            title,
+            ...(detail ? { detail } : {}),
+            source: 'cli',
+            context: {
+              ...(await gitContext(flags.get('cwd') ?? process.cwd())),
+              ...(agent ? { agent } : {}),
+              ...(prs.length ? { prs } : {}),
+              ...(note ? { note: note.replace(/^#/, '').toUpperCase() } : {}),
+              ...(session ? { session_id: session } : {}),
+            },
+          });
+          answer = sent;
+          if (config) refreshMute(cacheDir, config, sent);
+        }
+        if (flags.has('json'))
+          console.log(
+            JSON.stringify({
+              id: answer.id,
+              status: answer.status,
+              repeat_count: answer.repeat_count,
+            }),
+          );
+        else
+          console.log(
+            answer.status === 'muted'
+              ? 'Not sent: muted.'
+              : answer.status === 'sent'
+                ? `Sent to Kinjot Inbox (${answer.id.slice(0, 8)}).`
+                : answer.status === 'repeated'
+                  ? `Already in the Inbox; marked as repeated (${answer.id.slice(0, 8)}, ${answer.repeat_count} times).`
+                  : `Already in the Inbox (${answer.id.slice(0, 8)}).`,
+          );
+        return;
+      }
+      case 'inbox': {
+        if (positional[0] === 'resolve') {
+          rejectUnknownFlags(flags, ['note']);
+          if (
+            positional.length !== 2 ||
+            !/^(?:[a-fA-F0-9]{8}|[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12})$/.test(
+              positional[1]!,
+            )
+          )
+            throw new UsageError(
+              'usage: kinjot inbox resolve <8-character-prefix|uuid> [--note <text>]',
+            );
+          const resolution = flags.get('note');
+          if (resolution && (Array.from(resolution).length > 200 || /[\r\n]/.test(resolution)))
+            throw new UsageError('--note must be one line of at most 200 characters');
+          const result = await resolveBackend(process.env).backend.inboxResolve({
+            ref: positional[1]!,
+            resolution,
+          });
+          console.log(`Resolved ${terminalSafe(result.id.slice(0, 8))}.`);
+          return;
+        }
+        rejectUnknownFlags(flags, ['all', 'kind', 'cwd', 'json']);
+        if (positional.length)
+          throw new UsageError(
+            'usage: kinjot inbox [--all] [--kind <kind>] [--cwd <dir>] [--json]',
+          );
+        const kind = flags.get('kind') ?? 'handoff';
+        if (!['handoff', 'question', 'blocker', 'done', 'any'].includes(kind))
+          throw new UsageError('--kind is invalid');
+        const repo = flags.has('all')
+          ? undefined
+          : (await gitContext(flags.get('cwd') ?? process.cwd())).repo;
+        const kinds =
+          kind === 'any'
+            ? (['question', 'blocker', 'handoff', 'done'] as const)
+            : [kind as 'handoff' | 'question' | 'blocker' | 'done'];
+        const result = await resolveBackend(process.env).backend.inboxList({
+          repo,
+          kinds: [...kinds],
+          limit: 10,
+        });
+        if (flags.has('json')) console.log(terminalSafeJson(result));
+        else {
+          if (!repo && !flags.has('all'))
+            console.log('Repository could not be detected; showing all repositories.');
+          for (const item of result.items.slice(0, 10)) {
+            console.log(
+              `${terminalSafe(item.id)}  ${terminalSafe(item.kind.toUpperCase())}  ${terminalSafe(item.title)}`,
+            );
+            if (item.detail) console.log(`  ${terminalSafe(item.detail)}`);
+          }
+          if (result.other_open > 0)
+            console.log(
+              `${result.other_open} other open Inbox item${result.other_open === 1 ? '' : 's'}.`,
+            );
+        }
         return;
       }
       case 'append': {
@@ -826,12 +1045,25 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
     process.exitCode =
       error instanceof UsageError
         ? 2
-        : error instanceof LocalUnavailableError ||
-            (error instanceof ApiError &&
-              (error.kind === 'unsupported_action' || error.kind === 'key_access'))
-          ? 4
-          : error instanceof ApiError && error.status === 404 && error.message === 'note not found'
-            ? 3
-            : 1;
+        : error instanceof ApiError &&
+            (error.status === 401 ||
+              error.status === 429 ||
+              (error.status >= 500 && error.status <= 599))
+          ? 1
+          : error instanceof LocalUnavailableError ||
+              (error instanceof ApiError &&
+                (error.kind === 'unsupported_action' || error.kind === 'key_access'))
+            ? 4
+            : error instanceof ApiError && error.kind === 'inbox_item_not_found'
+              ? 3
+              : error instanceof ApiError &&
+                  error.kind !== undefined &&
+                  DEFINITE_INBOX_REFUSALS.has(error.kind)
+                ? 2
+                : error instanceof ApiError &&
+                    error.status === 404 &&
+                    error.message === 'note not found'
+                  ? 3
+                  : 1;
   }
 }

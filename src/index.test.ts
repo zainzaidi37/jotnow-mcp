@@ -673,25 +673,36 @@ describe('detectRepoTag', () => {
 describe('buildServer', () => {
   const api = new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY });
 
-  it('registers the eight jot tools', () => {
+  it('registers all ten Kinjot tools', () => {
     const server = buildServer(api, '0.0.0-test', { repoTag: null });
     expect(Object.keys(registeredTools(server)).sort()).toEqual([
       'append_to_jot',
       'edit_jot',
       'find_jots',
       'get_jot',
+      'inbox',
       'jot',
       'list_recent_jots',
+      'notify',
       'recall_jots',
       'upload_image',
     ]);
   });
 
   it.each([
-    ['read', ['find_jots', 'get_jot', 'list_recent_jots', 'recall_jots']],
+    ['read', ['find_jots', 'get_jot', 'inbox', 'list_recent_jots', 'recall_jots']],
     [
       'read_create',
-      ['find_jots', 'get_jot', 'jot', 'list_recent_jots', 'recall_jots', 'upload_image'],
+      [
+        'find_jots',
+        'get_jot',
+        'inbox',
+        'jot',
+        'list_recent_jots',
+        'notify',
+        'recall_jots',
+        'upload_image',
+      ],
     ],
     [
       'full',
@@ -700,8 +711,10 @@ describe('buildServer', () => {
         'edit_jot',
         'find_jots',
         'get_jot',
+        'inbox',
         'jot',
         'list_recent_jots',
+        'notify',
         'recall_jots',
         'upload_image',
       ],
@@ -713,11 +726,23 @@ describe('buildServer', () => {
 
   it('every tool description demands explicit invocation; jot excludes memory requests', () => {
     const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
-    for (const name of ['jot', 'find_jots', 'list_recent_jots', 'upload_image'] as const) {
+    for (const name of ['jot', 'find_jots', 'list_recent_jots', 'upload_image', 'inbox'] as const) {
       expect(tools[name]!.description).toMatch(/Use ONLY when the user explicitly/);
     }
     expect(tools.jot!.description).toMatch(/Do NOT use for "remember this"/);
     expect(tools.jot!.description).toMatch(/memory/i);
+  });
+
+  it('notify description pins its narrow autonomous exception', () => {
+    const description = registeredTools(buildServer(api, 'test', { repoTag: null })).notify!
+      .description;
+    expect(description).toContain('you may call this on your own, but only in these cases');
+    expect(description).toContain('they may not be watching');
+    expect(description).toContain('(a long or unattended task, or they asked to be notified)');
+    expect(description).toContain('not for a question in this conversation');
+    expect(description).toContain('(that is `jot`)');
+    expect(description).toContain('report to whoever started you instead');
+    expect(description).toContain('Never for progress updates');
   });
 
   it('discovery descriptions explain the autosave exclusion and direct read', () => {

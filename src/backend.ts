@@ -16,6 +16,13 @@ import type {
   SearchResult,
   UploadedImage,
   UploadImageInput,
+  InboxNotifyInput,
+  InboxNotifyResult,
+  InboxMuteState,
+  InboxListInput,
+  InboxListResult,
+  InboxResolveInput,
+  InboxResolveResult,
 } from './api.js';
 import { resolveConfig } from './config.js';
 import { openLocalLibrary } from './local/library.js';
@@ -29,6 +36,10 @@ import { resolveMode, type ModeResolution } from './mode.js';
  */
 export interface JotBackend {
   uploadImage(input: UploadImageInput): Promise<UploadedImage>;
+  inboxMuteState(): Promise<InboxMuteState>;
+  inboxNotify(input: InboxNotifyInput): Promise<InboxNotifyResult>;
+  inboxList(input: InboxListInput): Promise<InboxListResult>;
+  inboxResolve(input: InboxResolveInput): Promise<InboxResolveResult>;
   saveNote(input: SaveNoteInput): Promise<SavedNote>;
   editNote(input: EditNoteInput): Promise<EditedNote>;
   appendNote(input: AppendNoteInput): Promise<EditedNote>;
@@ -69,6 +80,20 @@ export class LocalBackend implements JotBackend {
 
   async uploadImage(_input: UploadImageInput): Promise<UploadedImage> {
     throw notInLocalMode('uploading an image');
+  }
+
+  async inboxMuteState(): Promise<InboxMuteState> {
+    throw inboxLocalError();
+  }
+
+  async inboxNotify(_input: InboxNotifyInput): Promise<InboxNotifyResult> {
+    throw inboxLocalError();
+  }
+  async inboxList(_input: InboxListInput): Promise<InboxListResult> {
+    throw inboxLocalError();
+  }
+  async inboxResolve(_input: InboxResolveInput): Promise<InboxResolveResult> {
+    throw inboxLocalError();
   }
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
@@ -113,6 +138,12 @@ export class LocalBackend implements JotBackend {
   }
 }
 
+function inboxLocalError(): LocalUnavailableError {
+  return new LocalUnavailableError(
+    'The Kinjot Inbox needs a Kinjot account; it is not available for a local library.',
+  );
+}
+
 /**
  * The serve path's backend: re-resolves the mode on **every tool call**.
  *
@@ -142,6 +173,10 @@ export function serveBackend(
   let lastSaveTarget: string | undefined;
   return {
     uploadImage: (input) => resolve().backend.uploadImage(input),
+    inboxMuteState: () => resolve().backend.inboxMuteState(),
+    inboxNotify: (input) => resolve().backend.inboxNotify(input),
+    inboxList: (input) => resolve().backend.inboxList(input),
+    inboxResolve: (input) => resolve().backend.inboxResolve(input),
     saveNote: (input) => {
       const { backend, resolution } = resolve();
       const target = resolution.mode === 'local' ? `local:${resolution.dir}` : 'account';

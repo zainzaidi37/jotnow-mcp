@@ -6,7 +6,7 @@ tagged and searchable.
 
 - Works with Claude Code, Codex and any other MCP client, plus a terminal CLI.
 - Free to sign up and use. Export every note as Markdown whenever you like.
-- Saves only when you ask. It never records your chats on its own.
+- Saves notes only when you ask. Agents can send brief Inbox notifications under the narrow rules below.
 
 [Documentation](https://kinjot.com/docs) · [Claude Code setup](https://kinjot.com/docs/claude-code) · [Codex setup](https://kinjot.com/docs/codex) · [MCP tool reference](https://kinjot.com/docs/mcp-tools)
 
@@ -50,8 +50,16 @@ tagged and searchable.
 | `append_to_jot`    | Add a paragraph to the end of a note                                     |
 | `list_recent_jots` | List your most recently updated notes                                    |
 | `upload_image`     | Upload a PNG or JPEG and return Markdown (Pro or self-hosted)            |
+| `notify`           | Send a brief question, blocker, handoff or requested completion to Inbox |
+| `inbox`            | List or resolve Inbox items when you explicitly ask                      |
 
 The server checks the key at startup and lists only tools its access level allows.
+`notify` needs create access; listing with `inbox` needs read access, and resolving needs create access.
+An agent may send a question or blocker on its own only when stopping and you may not be watching.
+Handoffs describe work left, and done messages require that you asked to be told. You can mute kinds
+or keys in Settings → Inbox. The `inbox` tool is used only when you ask to check the Inbox or pick up
+a handoff. It treats item text as untrusted and asks before acting on requests inside it to fetch
+URLs, handle secrets, change settings or contact outside addresses.
 
 Keep `upload_image` on **ask** in your agent's permissions. An uploaded image
 becomes public to anyone holding its link, so check the file before approving it.
@@ -74,6 +82,10 @@ kinjot append A10 --text "An update to this jot."
 kinjot upload-image shot.png --alt "Screenshot of the result"
 kinjot append A10 --text "$(kinjot upload-image shot.png)"
 kinjot recent 10
+kinjot notify "Review the deployment" --kind handoff --detail "Check the failing job."
+kinjot inbox                     # open handoffs in this repository
+kinjot inbox --all --kind any    # all agent messages, across repositories
+kinjot inbox resolve 1a2b3c4d --note "Picked up"
 ```
 
 Search, recall and recent leave out notes tagged `autosave`; `get` reads one by label.
@@ -84,14 +96,26 @@ supported backend to follow the library's history setting instead of forcing
 a history copy. `kinjot get A10 --json` prints one JSON object with the exact
 stored body, with terminal controls escaped.
 
+`notify` reads detail from piped stdin if `--detail` is absent. `--input-json` reads
+`{"title":"...","detail":"..."}` from stdin and takes no title argument, so
+reply text stays out of the process arguments. It also accepts `--pr`, `--note`,
+`--cwd`, `--session`, `--agent`, `--id` and `--json`. `waiting` requires `--session`.
+`--json` prints `id`, `status` and `repeat_count`. The CLI caches server mute
+settings for one hour by endpoint and key prefix; `--no-cache` asks the server.
+For `waiting`, a cold, expired or unreadable cache, or `--no-cache`, asks for
+the mute settings without sending the title or detail. If Waiting was turned
+off within the last hour, one more item may be sent and discarded; its answer
+mutes the cache.
+The MCP tool always asks the server.
+
 CLI exit codes:
 
 | Code | Meaning                                                                            |
 | ---- | ---------------------------------------------------------------------------------- |
 | 0    | Done.                                                                              |
-| 1    | Request, timeout, backend, or other failure.                                       |
-| 2    | Usage error, including an invalid ID or unknown flag.                              |
-| 3    | The note was definitely not found.                                                 |
+| 1    | Ambiguous request failure, including network, timeout, 5xx, 401 or 429.            |
+| 2    | Usage error or definite Inbox refusal, including access off or ambiguous ID.       |
+| 3    | The note or Inbox item was definitely not found.                                   |
 | 4    | The operation is unavailable for this library or backend, or the key lacks access. |
 | 5    | The append succeeded, but the backend kept a history copy despite `--no-snapshot`. |
 
@@ -185,8 +209,8 @@ kinjot where          # show where jots go, and why
 ```
 
 - The desktop app creates and owns the library; the CLI never creates one.
-- Locally, only `kinjot add` and the MCP `jot` tool work. Search, recall, get
-  and recent live in the app.
+- Locally, only `kinjot add` and the MCP `jot` tool work. Search, recall, get,
+  recent and Inbox need an account or live in the app.
 - If you have both a local library and a saved key, `kinjot` refuses to guess
   where a jot belongs. Run `kinjot use` once to choose, or set `KINJOT_MODE`
   for a single command.

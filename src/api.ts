@@ -114,11 +114,62 @@ export interface UploadedImage {
   height: number;
 }
 
+export type InboxKind = 'question' | 'blocker' | 'handoff' | 'done' | 'waiting';
+export interface InboxContext {
+  agent?: string;
+  repo?: string;
+  branch?: string;
+  prs?: string[];
+  note?: string;
+  session_id?: string;
+}
+export interface InboxNotifyInput {
+  id?: string;
+  kind: InboxKind;
+  title: string;
+  detail?: string;
+  context?: InboxContext;
+  source?: 'mcp' | 'cli';
+}
+export type InboxNotifyResult = z.infer<typeof wireSchemas.inbox_notify>;
+export type InboxMuteState = z.infer<typeof wireSchemas.inbox_mute_state>;
+export type InboxListResult = z.infer<typeof wireSchemas.inbox_list>;
+export interface InboxListInput {
+  repo?: string;
+  kinds?: Exclude<InboxKind, 'waiting'>[];
+  limit?: number;
+}
+export interface InboxResolveInput {
+  ref: string;
+  resolution?: string;
+}
+export type InboxResolveResult = z.infer<typeof wireSchemas.inbox_resolve>;
+
+const API_ERROR_KINDS = [
+  'unsupported_action',
+  'key_access',
+  'inbox_rate_limited',
+  'inbox_access_off',
+  'inbox_item_not_found',
+  'inbox_ambiguous_id',
+  'id_conflict',
+  'invalid_id',
+  'invalid_kind',
+  'invalid_source',
+  'invalid_context',
+  'invalid_title',
+  'invalid_session',
+  'invalid_request',
+  'invalid_key',
+  'rate_limited',
+] as const;
+export type ApiErrorKind = (typeof API_ERROR_KINDS)[number];
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    readonly kind?: 'unsupported_action' | 'key_access',
+    readonly kind?: ApiErrorKind,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -167,6 +218,57 @@ export class NotesApi {
       width: sanitized.width,
       height: sanitized.height,
     };
+  }
+
+  async inboxNotify(input: InboxNotifyInput): Promise<InboxNotifyResult> {
+    try {
+      return await this.call('inbox_notify', wireSchemas.inbox_notify, {
+        id: input.id ?? crypto.randomUUID(),
+        kind: input.kind,
+        title: input.title,
+        detail: input.detail,
+        context: input.context,
+        source: input.source ?? 'mcp',
+      });
+    } catch (error) {
+      throw this.inboxError(error);
+    }
+  }
+
+  async inboxMuteState(): Promise<InboxMuteState> {
+    try {
+      return await this.call('inbox_mute_state', wireSchemas.inbox_mute_state, {});
+    } catch (error) {
+      throw this.inboxError(
+        error,
+        'This Kinjot deployment does not support this Inbox action yet; its operator needs to update it.',
+      );
+    }
+  }
+
+  async inboxList(input: InboxListInput): Promise<InboxListResult> {
+    try {
+      return await this.call('inbox_list', wireSchemas.inbox_list, { ...input });
+    } catch (error) {
+      throw this.inboxError(error);
+    }
+  }
+
+  async inboxResolve(input: InboxResolveInput): Promise<InboxResolveResult> {
+    try {
+      return await this.call('inbox_resolve', wireSchemas.inbox_resolve, { ...input });
+    } catch (error) {
+      throw this.inboxError(error);
+    }
+  }
+
+  private inboxError(
+    error: unknown,
+    unavailableMessage = 'This Kinjot deployment does not have the Inbox yet; its operator needs to update it.',
+  ): unknown {
+    return error instanceof ApiError && error.status === 400 && error.message === 'unknown action'
+      ? new ApiError(400, unavailableMessage, 'unsupported_action')
+      : error;
   }
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
@@ -320,18 +422,32 @@ export class NotesApi {
       } | null;
       if (signal.aborted) throw timeoutError();
       if (!response.ok) {
+        const knownKind =
+          typeof body?.code === 'string'
+            ? API_ERROR_KINDS.find((kind) => kind === body.code)
+            : undefined;
         if (response.status === 401) {
           throw new ApiError(
             401,
             'API key was rejected — it may have been revoked. Create a new one in Settings → API keys.',
+            knownKind,
+          );
+        }
+        if (typeof body?.code === 'string') {
+          throw new ApiError(
+            response.status,
+            typeof body.error === 'string'
+              ? body.error
+              : response.status === 429
+                ? 'rate limit hit (60 writes/min per key); wait a minute and retry.'
+                : `request failed with ${response.status}`,
+            knownKind,
           );
         }
         if (response.status === 429) {
           throw new ApiError(
             429,
-            typeof body?.code === 'string' && typeof body.error === 'string'
-              ? body.error
-              : 'rate limit hit (60 writes/min per key); wait a minute and retry.',
+            'rate limit hit (60 writes/min per key); wait a minute and retry.',
           );
         }
         throw new ApiError(
