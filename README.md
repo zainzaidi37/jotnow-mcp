@@ -49,8 +49,14 @@ tagged and searchable.
 | `edit_jot`         | Replace one exact passage in a note, or change its title, tags or folder |
 | `append_to_jot`    | Add a paragraph to the end of a note                                     |
 | `list_recent_jots` | List your most recently updated notes                                    |
+| `upload_image`     | Upload a PNG or JPEG and return Markdown (Pro or self-hosted)            |
 
 The server checks the key at startup and lists only tools its access level allows.
+
+Keep `upload_image` on **ask** in your agent's permissions. An uploaded image
+becomes public to anyone holding its link, so check the file before approving it.
+
+On a self-hosted deployment, `upload_image` needs a backend release that includes image uploads; an older one answers with a message to run `update`.
 
 Every note has a short label, like `A10`. Listings show it, and your agent can
 use it to open, edit or add to that note, for example "add this to A10".
@@ -65,6 +71,8 @@ kinjot search "worker environment"
 kinjot recall "why deployments use stale configuration"   # Pro
 kinjot get A10              # a label, an 8-character ID prefix, or a full ID
 kinjot append A10 --text "An update to this jot."
+kinjot upload-image shot.png --alt "Screenshot of the result"
+kinjot append A10 --text "$(kinjot upload-image shot.png)"
 kinjot recent 10
 ```
 

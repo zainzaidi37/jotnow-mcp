@@ -5,6 +5,8 @@ import { normalizeTags } from './tagging.js';
 import { parseNoteLabel } from './core/note-label.js';
 import { isUuidShapeAnyCase } from './uuid.js';
 import type { ApiKeyAccess } from './core/index.js';
+import { sanitizeImageForUpload } from './core/index.js';
+import { cleanImageAlt, putGrantedImage, readImageFile } from './image-upload.js';
 
 export const KEY_INFO_DEADLINE_MS = 1_500;
 
@@ -98,6 +100,20 @@ export interface EditedNote {
   snapshot_skipped?: boolean;
 }
 
+export interface UploadImageInput {
+  path: string;
+  alt?: string;
+}
+
+export interface UploadedImage {
+  markdown: string;
+  url: string;
+  path: string;
+  bytes: number;
+  width: number;
+  height: number;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,
@@ -119,6 +135,38 @@ export class NotesApi {
   async keyInfo(deadlineMs?: number): Promise<ApiKeyAccess> {
     const result = await this.call('key_info', wireSchemas.key_info, {}, deadlineMs);
     return result.access;
+  }
+
+  async uploadImage(input: UploadImageInput): Promise<UploadedImage> {
+    const file = await readImageFile(input.path);
+    const sanitized = sanitizeImageForUpload(file.bytes);
+    if (!sanitized.ok) throw new Error(sanitized.message);
+    let grant;
+    try {
+      grant = await this.call('image_upload', wireSchemas.image_upload, {
+        ext: sanitized.ext,
+        bytes: sanitized.bytes.byteLength,
+      });
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 400 && error.message === 'unknown action') {
+        throw new ApiError(
+          400,
+          'this Kinjot server does not support image uploads yet; on a self-hosted deployment, run update',
+          'unsupported_action',
+        );
+      }
+      throw error;
+    }
+    await putGrantedImage(grant, sanitized.bytes, this.fetchImpl);
+    const url = grant.publicUrl;
+    return {
+      markdown: `![${cleanImageAlt(input.alt)}](${url})`,
+      url,
+      path: file.path,
+      bytes: sanitized.bytes.byteLength,
+      width: sanitized.width,
+      height: sanitized.height,
+    };
   }
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
@@ -281,7 +329,9 @@ export class NotesApi {
         if (response.status === 429) {
           throw new ApiError(
             429,
-            'rate limit hit (60 writes/min per key); wait a minute and retry.',
+            typeof body?.code === 'string' && typeof body.error === 'string'
+              ? body.error
+              : 'rate limit hit (60 writes/min per key); wait a minute and retry.',
           );
         }
         throw new ApiError(
@@ -293,7 +343,9 @@ export class NotesApi {
       const invalidReply = (detail: string) =>
         new ApiError(
           response.status,
-          `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g kinjot) or, on a self-hosted deployment, update the backend.`,
+          action === 'image_upload'
+            ? 'The server offered an unsafe upload grant.'
+            : `${this.config.apiUrl} answered ${action}: ${detail}. Please update the CLI (npm i -g kinjot) or, on a self-hosted deployment, update the backend.`,
         );
       if (body === null) throw invalidReply('no JSON response this version of Kinjot understands');
       const parsed = schema.safeParse(body);

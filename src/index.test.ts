@@ -673,7 +673,7 @@ describe('detectRepoTag', () => {
 describe('buildServer', () => {
   const api = new NotesApi({ apiUrl: 'https://api.example', apiKey: GOOD_KEY });
 
-  it('registers the seven jot tools', () => {
+  it('registers the eight jot tools', () => {
     const server = buildServer(api, '0.0.0-test', { repoTag: null });
     expect(Object.keys(registeredTools(server)).sort()).toEqual([
       'append_to_jot',
@@ -683,12 +683,16 @@ describe('buildServer', () => {
       'jot',
       'list_recent_jots',
       'recall_jots',
+      'upload_image',
     ]);
   });
 
   it.each([
     ['read', ['find_jots', 'get_jot', 'list_recent_jots', 'recall_jots']],
-    ['read_create', ['find_jots', 'get_jot', 'jot', 'list_recent_jots', 'recall_jots']],
+    [
+      'read_create',
+      ['find_jots', 'get_jot', 'jot', 'list_recent_jots', 'recall_jots', 'upload_image'],
+    ],
     [
       'full',
       [
@@ -699,6 +703,7 @@ describe('buildServer', () => {
         'jot',
         'list_recent_jots',
         'recall_jots',
+        'upload_image',
       ],
     ],
   ] as const)('registers exactly the %s tools', (access, names) => {
@@ -708,7 +713,7 @@ describe('buildServer', () => {
 
   it('every tool description demands explicit invocation; jot excludes memory requests', () => {
     const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
-    for (const name of ['jot', 'find_jots', 'list_recent_jots'] as const) {
+    for (const name of ['jot', 'find_jots', 'list_recent_jots', 'upload_image'] as const) {
       expect(tools[name]!.description).toMatch(/Use ONLY when the user explicitly/);
     }
     expect(tools.jot!.description).toMatch(/Do NOT use for "remember this"/);
@@ -738,6 +743,10 @@ describe('buildServer', () => {
     );
     expect(readFileSync(new URL('../README.md', import.meta.url), 'utf8').split('\n')).toContain(
       'Search, recall and recent leave out notes tagged `autosave`; `get` reads one by label.',
+    );
+    expect(HELP).toContain('kinjot upload-image <path> [--alt <text>] [--json]');
+    expect(readFileSync(new URL('../README.md', import.meta.url), 'utf8')).toContain(
+      '`upload_image`',
     );
   });
 

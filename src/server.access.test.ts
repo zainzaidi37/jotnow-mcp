@@ -17,8 +17,16 @@ const ALL = [
   'jot',
   'list_recent_jots',
   'recall_jots',
+  'upload_image',
 ];
-const READ_CREATE = ['find_jots', 'get_jot', 'jot', 'list_recent_jots', 'recall_jots'];
+const READ_CREATE = [
+  'find_jots',
+  'get_jot',
+  'jot',
+  'list_recent_jots',
+  'recall_jots',
+  'upload_image',
+];
 const READ = ['find_jots', 'get_jot', 'list_recent_jots', 'recall_jots'];
 
 // Each call gets an empty config directory of its own, so a key or mode that

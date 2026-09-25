@@ -1,5 +1,34 @@
 import { z } from 'zod';
-import { API_KEY_ACCESS_LEVELS } from './core/index.js';
+import {
+  API_KEY_ACCESS_LEVELS,
+  ATTACHMENT_UPLOAD_HEADER_NAMES,
+  UploadedAttachmentSchema,
+} from './core/index.js';
+
+const uploadHeaders = z
+  .record(z.string())
+  .refine(
+    (headers) =>
+      Object.keys(headers).every((name) =>
+        ATTACHMENT_UPLOAD_HEADER_NAMES.some((allowed) => allowed === name.toLowerCase()),
+      ),
+    { message: 'upload grant contains an unsafe header' },
+  );
+
+export const imageUploadGrantSchema = z.object({
+  uploadUrl: z
+    .string()
+    .url()
+    .refine((value) => /^https?:\/\//i.test(value)),
+  method: z.literal('PUT'),
+  headers: uploadHeaders,
+  publicUrl: UploadedAttachmentSchema.shape.publicUrl.refine((value) => {
+    // eslint-disable-next-line no-control-regex
+    return !/[\s\x00-\x1f\x7f-\x9f()<>[\]\\]/u.test(value);
+  }),
+  expiresAt: z.string(),
+  expiresInSeconds: z.number().int().positive(),
+});
 
 // Public mcp-api envelopes, deliberately looser than database row schemas:
 // ids/timestamps/source are strings and additive server fields are tolerated.
@@ -13,6 +42,7 @@ const searchHit = z.object({
 });
 
 export const wireSchemas = {
+  image_upload: imageUploadGrantSchema,
   key_info: z.object({ access: z.enum(API_KEY_ACCESS_LEVELS) }),
   save_note: z.object({
     note: z.object({ id: z.string(), title: z.string(), created_at: z.string() }),

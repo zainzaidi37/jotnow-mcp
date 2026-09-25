@@ -55,6 +55,7 @@ Usage:
   kinjot get <label|id-prefix|uuid> [--json]
   kinjot append <label|id-prefix|uuid> [--text <text>] [--no-snapshot]
                                  (text is read from stdin when piped)
+  kinjot upload-image <path> [--alt <text>] [--json]
   kinjot recent [n]
   kinjot                         run the MCP server on stdio (for MCP configs)
   kinjot init --key kj_live_... [--api-url <url>]
@@ -738,6 +739,25 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
         });
         console.log(`Appended to ${terminalSafe(noteHandle(note))} "${terminalSafe(note.title)}".`);
         if (flags.has('no-snapshot') && note.snapshot_skipped !== true) process.exitCode = 5;
+        return;
+      }
+      case 'upload-image': {
+        rejectUnknownFlags(flags, ['alt', 'json']);
+        const path = positional[0];
+        if (!path || positional.length !== 1)
+          throw new UsageError('usage: kinjot upload-image <path> [--alt <text>] [--json]');
+        const image = await resolveBackend(process.env).backend.uploadImage({
+          path,
+          alt: flags.get('alt'),
+        });
+        if (flags.has('json')) {
+          console.log(terminalSafeJson(image));
+        } else {
+          console.log(terminalSafe(image.markdown));
+        }
+        console.error(
+          `uploaded ${terminalSafe(image.path)} (${image.bytes} bytes, ${image.width}×${image.height})`,
+        );
         return;
       }
       case 'search': {

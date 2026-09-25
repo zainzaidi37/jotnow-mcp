@@ -14,6 +14,8 @@ import type {
   SavedNote,
   SearchHit,
   SearchResult,
+  UploadedImage,
+  UploadImageInput,
 } from './api.js';
 import { resolveConfig } from './config.js';
 import { openLocalLibrary } from './local/library.js';
@@ -26,6 +28,7 @@ import { resolveMode, type ModeResolution } from './mode.js';
  * path is the same object it always was — no wrapper, no behaviour change.
  */
 export interface JotBackend {
+  uploadImage(input: UploadImageInput): Promise<UploadedImage>;
   saveNote(input: SaveNoteInput): Promise<SavedNote>;
   editNote(input: EditNoteInput): Promise<EditedNote>;
   appendNote(input: AppendNoteInput): Promise<EditedNote>;
@@ -63,6 +66,10 @@ function notInLocalMode(what: string): LocalUnavailableError {
  */
 export class LocalBackend implements JotBackend {
   constructor(private readonly dir: string) {}
+
+  async uploadImage(_input: UploadImageInput): Promise<UploadedImage> {
+    throw notInLocalMode('uploading an image');
+  }
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
     const library = openLocalLibrary(this.dir);
@@ -134,6 +141,7 @@ export function serveBackend(
   const resolve = () => resolveBackend(env, makeApi);
   let lastSaveTarget: string | undefined;
   return {
+    uploadImage: (input) => resolve().backend.uploadImage(input),
     saveNote: (input) => {
       const { backend, resolution } = resolve();
       const target = resolution.mode === 'local' ? `local:${resolution.dir}` : 'account';
