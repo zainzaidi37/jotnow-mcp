@@ -319,6 +319,18 @@ describe('NotesApi', () => {
     expect(await api.searchNotes('hit')).toEqual(payload);
   });
 
+  it('searchNotes posts the full query with the search action', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [], total: 0 }));
+    const api = new NotesApi(config, fetchMock as unknown as typeof fetch);
+    await api.searchNotes('nginx proxy failure');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body).toEqual({ action: 'search_notes', query: 'nginx proxy failure' });
+  });
+
   it('getNote unwraps the full note', async () => {
     const note = {
       id: 'n1',
@@ -487,6 +499,31 @@ describe('terminalSafe', () => {
     const { terminalSafe } = await import('./cli.js');
     expect(terminalSafe('normal title — ünïcode ok')).toBe('normal title — ünïcode ok');
     expect(terminalSafe('keep\ttabs')).toBe('keep\ttabs');
+  });
+});
+
+describe('cli search', () => {
+  it('search command posts the search action with the joined query', async () => {
+    const { main } = await import('./cli.js');
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [], total: 0 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const prevKey = process.env.KINJOT_API_KEY;
+    process.env.KINJOT_API_KEY = GOOD_KEY;
+    try {
+      await main(['search', 'nginx', 'proxy failure']);
+    } finally {
+      if (prevKey === undefined) delete process.env.KINJOT_API_KEY;
+      else process.env.KINJOT_API_KEY = prevKey;
+      logSpy.mockRestore();
+      vi.unstubAllGlobals();
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body).toEqual({ action: 'search_notes', query: 'nginx proxy failure' });
   });
 });
 
@@ -778,6 +815,108 @@ describe('buildServer', () => {
     expect(body.tags).toEqual(['infra', 'my-repo']);
     expect(result.content[0]!.text).toContain('Jotted');
     expect(result.content[0]!.text).not.toContain('existing tags include');
+  });
+
+  it('jot forwards title, body, tags, and folder in the save request', async () => {
+    const uuid = vi
+      .spyOn(globalThis.crypto, 'randomUUID')
+      .mockReturnValue('11111111-1111-4111-8111-111111111111');
+    try {
+      const fetchMock = vi.fn(async () =>
+        jsonResponse(200, { note: { id: 'n1', title: 'Deploy notes', created_at: 'now' } }),
+      );
+      const server = buildServer(
+        new NotesApi(
+          { apiUrl: 'https://api.example', apiKey: GOOD_KEY },
+          fetchMock as unknown as typeof fetch,
+        ),
+        '0.0.0-test',
+        { repoTag: 'my-repo' },
+      );
+      await registeredTools(server).jot!.handler(
+        { title: 'Deploy notes', body: 'Fix the proxy', tags: ['Infra'], folder: 'Operations' },
+        {},
+      );
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      const body = JSON.parse(
+        (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+      );
+      expect(body).toEqual({
+        action: 'save_note',
+        id: '11111111-1111-4111-8111-111111111111',
+        title: 'Deploy notes',
+        body: 'Fix the proxy',
+        tags: ['infra', 'my-repo'],
+        folder: 'Operations',
+        source: 'mcp',
+      });
+    } finally {
+      uuid.mockRestore();
+    }
+  });
+
+  it('edit_jot forwards every accepted field in the edit request', async () => {
+    const fetchMock = vi.fn(async () =>
+      jsonResponse(200, {
+        note: { id: 'n1', short_id: 1, title: 'Updated notes', updated_at: 'now' },
+      }),
+    );
+    const server = buildServer(
+      new NotesApi(
+        { apiUrl: 'https://api.example', apiKey: GOOD_KEY },
+        fetchMock as unknown as typeof fetch,
+      ),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    await registeredTools(server).edit_jot!.handler(
+      {
+        id: 'A10',
+        old_string: 'before',
+        new_string: 'after',
+        title: 'Updated notes',
+        add_tags: ['Infra'],
+        remove_tags: ['#Old'],
+        folder: 'Operations',
+      },
+      {},
+    );
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body).toEqual({
+      action: 'edit_note',
+      short_id: 1,
+      old_string: 'before',
+      new_string: 'after',
+      title: 'Updated notes',
+      add_tags: ['infra'],
+      remove_tags: ['old'],
+      folder: 'Operations',
+      source: 'mcp',
+    });
+  });
+
+  it('find_jots forwards the full multi-word query in the search request', async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [], total: 0 }));
+    const server = buildServer(
+      new NotesApi(
+        { apiUrl: 'https://api.example', apiKey: GOOD_KEY },
+        fetchMock as unknown as typeof fetch,
+      ),
+      '0.0.0-test',
+      { repoTag: null },
+    );
+    await registeredTools(server).find_jots!.handler({ query: 'nginx proxy failure' }, {});
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0]! as unknown as [string, RequestInit])[1].body as string,
+    );
+    expect(body).toEqual({ action: 'search_notes', query: 'nginx proxy failure' });
   });
 
   it('jot displays actually-saved tags, hints the returned vocabulary, and caches it for later saves', async () => {

@@ -47,7 +47,7 @@ describe('runKey', () => {
     vi.unstubAllGlobals();
   });
 
-  it('happy path: prompts, validates against the API, saves the key, prints success', async () => {
+  it('happy path: validates the pasted key in one request, saves it, and prints success', async () => {
     const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
@@ -56,7 +56,10 @@ describe('runKey', () => {
 
     await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env: process.env });
 
-    expect(fetchMock).toHaveBeenCalledWith(DEFAULT_API_URL, expect.any(Object));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
+    expect(url).toBe(DEFAULT_API_URL);
+    expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${GOOD_KEY}`);
     expect(existsSync(configFilePath(dir))).toBe(true);
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiKey).toBe(GOOD_KEY);
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
