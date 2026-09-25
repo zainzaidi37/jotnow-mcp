@@ -15,7 +15,10 @@ const MAX_SHORT_ID = Array.from(
   { length: NOTE_LABEL_MAX_CHARS - 2 },
   (_, index) => ALPHABET.length * 9 * 10 ** (index + 1),
 ).reduce((sum, block) => sum + block, 0);
-const LABEL_PATTERN = new RegExp(`^([A-HJ-NP-Z])([1-9][0-9]{1,${NOTE_LABEL_MAX_CHARS - 2}})$`, 'i');
+export const NOTE_LABEL_PATTERN = new RegExp(
+  `^([A-HJ-NP-Z])([1-9][0-9]{1,${NOTE_LABEL_MAX_CHARS - 2}})$`,
+  'i',
+);
 
 export function noteLabel(shortId: number): string | null {
   if (!Number.isSafeInteger(shortId) || shortId < 1) {
@@ -38,7 +41,7 @@ export function noteLabel(shortId: number): string | null {
 export function parseNoteLabel(value: string): number | null {
   const bare = value.startsWith('#') ? value.slice(1) : value;
   if (bare.length < 3 || bare.length > NOTE_LABEL_MAX_CHARS) return null;
-  const match = LABEL_PATTERN.exec(bare);
+  const match = NOTE_LABEL_PATTERN.exec(bare);
   if (!match) return null;
   const letter = ALPHABET.indexOf(match[1]!.toUpperCase());
   if (letter < 0) return null;

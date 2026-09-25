@@ -5,6 +5,7 @@
 // Edit the source module and re-run; CI fails on any difference.
 
 import { z } from 'zod';
+import { NOTE_LABEL_PATTERN } from './note-label.js';
 
 // Canonical data model. Mirrors the Postgres schema exactly (see
 // docs/technical-plan.md, Phase 0). Timestamps are ISO-8601 strings as
@@ -25,6 +26,11 @@ const timestamptz = z.string().datetime({ offset: true });
 const jsonbValue = z.custom<unknown>((value) => value !== undefined, {
   message: 'Required',
 });
+const codePointLength = (minimum: number, maximum: number) =>
+  z.string().refine((value) => {
+    const count = Array.from(value).length;
+    return count >= minimum && count <= maximum;
+  });
 
 /**
  * The pull cursor's ordering key (plans/sync-cursor-fence.md): the xid8 of the
@@ -70,7 +76,8 @@ export const NoteSchema = z.object({
 });
 export type Note = z.infer<typeof NoteSchema>;
 export type NoteSource = Note['source'];
-export { NOTE_LABEL_MAX_CHARS, noteLabel, parseNoteLabel } from './note-label.js';
+export { NOTE_LABEL_MAX_CHARS, NOTE_LABEL_PATTERN } from './note-label.js';
+export { noteLabel, parseNoteLabel } from './note-label.js';
 
 export const FolderSchema = z.object({
   id: uuid,
@@ -710,6 +717,73 @@ export const AgentActivitySchema = z.discriminatedUnion('kind', [
   }),
 ]);
 export type AgentActivity = z.infer<typeof AgentActivitySchema>;
+
+/** Server-written Inbox rows: no sync cursor or client mutation surface. */
+export const INBOX_KINDS = ['question', 'blocker', 'handoff', 'done', 'waiting'] as const;
+export const INBOX_AGENT_KINDS = ['question', 'blocker', 'handoff', 'done'] as const;
+export const INBOX_AGENT_ACCESS = ['off', 'read', 'resolve'] as const;
+export const INBOX_PER_KEY_HOUR_CAP = 30;
+export const INBOX_PER_ACCOUNT_DAY_CAP = 200;
+export const INBOX_TITLE_LIMIT = 120;
+export const INBOX_DETAIL_LIMIT = 600;
+export const INBOX_RESOLUTION_LIMIT = 200;
+const STORED_NOTE_LABEL_PATTERN = new RegExp(
+  NOTE_LABEL_PATTERN.source,
+  NOTE_LABEL_PATTERN.flags.replace('i', ''),
+);
+
+export const InboxContextSchema = z.object({
+  agent: z
+    .string()
+    .regex(/^[a-z0-9._-]{1,40}$/)
+    .optional(),
+  repo: codePointLength(1, 100).optional(),
+  branch: codePointLength(1, 200).optional(),
+  prs: z.array(z.string().url()).max(3).optional(),
+  note: z.string().regex(STORED_NOTE_LABEL_PATTERN).optional(),
+  session_id: z
+    .string()
+    .regex(/^[A-Za-z0-9_-]{1,100}$/)
+    .optional(),
+});
+export type InboxContext = z.infer<typeof InboxContextSchema>;
+
+export const InboxItemSchema = z.object({
+  id: uuid,
+  user_id: uuid,
+  api_key_id: uuid,
+  source: z.enum(['mcp', 'cli']),
+  kind: z.enum(INBOX_KINDS),
+  title: codePointLength(1, INBOX_TITLE_LIMIT),
+  detail: codePointLength(1, INBOX_DETAIL_LIMIT).nullable(),
+  context: InboxContextSchema,
+  dedupe_key: z.string().regex(/^[0-9a-f]{64}$/),
+  last_send_id: uuid.nullable(),
+  repeat_count: z.number().int().min(1),
+  repeated_at: timestamptz.nullable(),
+  surfaced_at: timestamptz,
+  read_at: timestamptz.nullable(),
+  snoozed_until: timestamptz.nullable(),
+  resolved_at: timestamptz.nullable(),
+  resolved_by: z.enum(['user', 'agent']).nullable(),
+  resolved_key_id: uuid.nullable(),
+  resolution: codePointLength(1, INBOX_RESOLUTION_LIMIT).nullable(),
+  created_at: timestamptz,
+  updated_at: timestamptz,
+  deleted_at: timestamptz.nullable(),
+});
+export type InboxItem = z.infer<typeof InboxItemSchema>;
+
+export const InboxSettingsSchema = z.object({
+  user_id: uuid,
+  send_kinds: z.array(z.enum(INBOX_KINDS)),
+  muted_key_ids: z.array(uuid).max(100),
+  agent_access: z.enum(INBOX_AGENT_ACCESS),
+  toast: z.boolean(),
+  created_at: timestamptz,
+  updated_at: timestamptz,
+});
+export type InboxSettings = z.infer<typeof InboxSettingsSchema>;
 
 export const TidyJobSchema = z.object({
   note_id: uuid,
