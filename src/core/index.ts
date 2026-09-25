@@ -1294,6 +1294,18 @@ export const ATTACHMENT_MAX_OBJECT_BYTES = 25 * 1024 * 1024;
 export const ATTACHMENT_UPLOAD_TIMEOUT_MS = 60_000;
 
 /**
+ * The only header names an agent upload grant may tell a client to send with
+ * its PUT; the `upload_image` client refuses a grant that names any other. It is
+ * a credential boundary: on Supabase Storage the server's own client headers
+ * carry the service-role key. The response's header names are pinned to this
+ * list by `mcp-api-image-upload.unit.test.ts`, never projected from a client.
+ * The reasoning and the measurement behind leaving `x-upsert` out are in
+ * `supabase/functions/_shared/attachments.ts`,
+ * whose copy `attachments-contract.unit.test.ts` pins equal to this one.
+ */
+export const ATTACHMENT_UPLOAD_HEADER_NAMES = ['content-type', 'cache-control'] as const;
+
+/**
  * Per-user ceilings, checked before an upload against `attachment_usage()`.
  *
  * On the Supabase backend these are **advisory** (plan D9): the browser uploads
