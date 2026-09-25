@@ -1281,6 +1281,19 @@ export const ATTACHMENT_KEY_PATTERN = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(webp|png|
 export const ATTACHMENT_MAX_OBJECT_BYTES = 25 * 1024 * 1024;
 
 /**
+ * Time bound on one upload attempt, shared by both backends.
+ *
+ * Without it a stalled connection hangs the upload for as long as the browser's
+ * own default allows — which, for `fetch`, is effectively forever — with the
+ * paste affordance waiting on it. Generous rather than tight: 25 MiB on a poor
+ * mobile connection is a slow but legitimate upload.
+ *
+ * Lives in core beside the shared attachment constants because both the web
+ * backends and the agent upload path use the same deadline.
+ */
+export const ATTACHMENT_UPLOAD_TIMEOUT_MS = 60_000;
+
+/**
  * Per-user ceilings, checked before an upload against `attachment_usage()`.
  *
  * On the Supabase backend these are **advisory** (plan D9): the browser uploads
@@ -1351,6 +1364,19 @@ export const UploadedAttachmentSchema = z.object({
     }),
 });
 export type UploadedAttachment = z.infer<typeof UploadedAttachmentSchema>;
+
+/**
+ * Byte-level image handling: the PNG chunk walker and keep-list, and the
+ * metadata sanitizer for agent uploads (`plans/agent-image-upload-2026-09-25.md`
+ * §4.2).
+ *
+ * Deliberately barrel-reachable, for both of its consumers: the SPA's PNG fast
+ * path (`apps/web/src/lib/image-transcode.ts`) walks chunks with it, and the
+ * vendoring generator copies it into `packages/mcp/src/core` for the
+ * `upload_image` tool, which has no canvas and so strips metadata at the byte
+ * level. Dependency-free, so it drags nothing into either consumer.
+ */
+export * from './image-bytes.js';
 
 /**
  * The canonical SQLite schema for the local store, emitted into the desktop
