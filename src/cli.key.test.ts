@@ -15,6 +15,11 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function setupResponse(init: RequestInit): Response {
+  const { action } = JSON.parse(String(init.body)) as { action: string };
+  return jsonResponse(200, action === 'key_info' ? { access: 'read_create' } : { notes: [] });
+}
+
 function capture() {
   const lines: string[] = [];
   return { write: (s: string) => (lines.push(s), true), all: () => lines.join('') };
@@ -48,7 +53,9 @@ describe('runKey', () => {
   });
 
   it('happy path: validates the pasted key in one request, saves it, and prints success', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -56,7 +63,7 @@ describe('runKey', () => {
 
     await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr, env: process.env });
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
     const [url, init] = fetchMock.mock.calls[0]! as unknown as [string, RequestInit];
     expect(url).toBe(DEFAULT_API_URL);
     expect((init.headers as Record<string, string>).authorization).toBe(`Bearer ${GOOD_KEY}`);
@@ -64,6 +71,9 @@ describe('runKey', () => {
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiKey).toBe(GOOD_KEY);
     expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiUrl).toBeUndefined();
     expect(stdout.all()).toMatch(/ok ✔/);
+    expect(stdout.all()).toContain(
+      'API key access: Read and create — can read and create notes; edits, appends and session autosave need a full-access key.',
+    );
     expect(stdout.all()).toContain('mcpServers');
     expect(stdout.all()).toContain('claude mcp add kinjot -- npx -y kinjot');
     expect(stdout.all()).toContain('codex mcp add kinjot -- npx -y kinjot');
@@ -73,8 +83,61 @@ describe('runKey', () => {
     expect(output.indexOf('codex mcp add')).toBeLessThan(output.indexOf('mcpServers'));
   });
 
+  it('skips the level line on an older backend without key_info', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) => {
+      const { action } = JSON.parse(String(init.body)) as { action: string };
+      return action === 'key_info'
+        ? jsonResponse(400, { error: 'unknown action' })
+        : jsonResponse(200, { notes: [] });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const { runKey } = await import('./cli.js');
+    const stdout = capture();
+    await runKey({ readHidden: async () => GOOD_KEY, stdout, stderr: capture(), env: process.env });
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init.body)).action)).toEqual([
+      'list_recent_notes',
+      'key_info',
+    ]);
+    expect(stdout.all()).not.toContain('API key access:');
+    expect(stdout.all()).toContain('Saved — Kinjot will use this key automatically');
+  });
+
+  it.each(['server error', 'timeout'] as const)(
+    'saves a validated key when the level request has a %s',
+    async (failure) => {
+      const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) => {
+        const { action } = JSON.parse(String(init.body)) as { action: string };
+        if (action !== 'key_info') return jsonResponse(200, { notes: [] });
+        if (failure === 'server error') return jsonResponse(500, { error: 'temporary failure' });
+        return await new Promise<Response>(() => {});
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      const { runKey } = await import('./cli.js');
+      const stdout = capture();
+      const previousExitCode = process.exitCode;
+      process.exitCode = undefined;
+      try {
+        await expect(
+          runKey({ readHidden: async () => GOOD_KEY, stdout, stderr: capture(), env: process.env }),
+        ).resolves.toBeUndefined();
+        expect(process.exitCode).toBeUndefined();
+      } finally {
+        process.exitCode = previousExitCode;
+      }
+      expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init.body)).action)).toEqual([
+        'list_recent_notes',
+        'key_info',
+      ]);
+      expect(JSON.parse(readFileSync(configFilePath(dir), 'utf8')).apiKey).toEqual(GOOD_KEY);
+      expect(stdout.all()).not.toContain('API key access:');
+      expect(stdout.all()).toContain('Saved — Kinjot will use this key automatically');
+    },
+  );
+
   it('treats a legacy production URL as the default when saving a key', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -94,7 +157,9 @@ describe('runKey', () => {
   });
 
   it('malformed key: errors before any API call, saves nothing', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -131,7 +196,9 @@ describe('runKey', () => {
   });
 
   it('success output never contains the key value or the kj_live_ prefix', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -147,7 +214,9 @@ describe('runKey', () => {
   it('carries a custom endpoint into JSON and both client commands with shell-safe quoting', async () => {
     const apiUrl =
       "https://self-hosted.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -171,7 +240,9 @@ describe('runKey', () => {
 
   it('--api-url overrides the environment for validation and every printed setup form', async () => {
     const apiUrl = "https://chosen.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -200,7 +271,9 @@ describe('runKey', () => {
   });
 
   it('rejects an empty --api-url before validation or storage', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
 
@@ -217,7 +290,9 @@ describe('runKey', () => {
   });
 
   it('warns on stderr when KINJOT_API_KEY is already set, but still saves', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -232,7 +307,9 @@ describe('runKey', () => {
   });
 
   it('piped stdin end-to-end: a non-TTY input stream saves the key without touching setRawMode', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const { runKey } = await import('./cli.js');
     const stdout = capture();
@@ -288,7 +365,9 @@ describe('copy', () => {
   });
 
   it('runInit output includes the `kinjot key` tip and Codex command', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
     const logSpy = vi
@@ -304,6 +383,9 @@ describe('copy', () => {
     const output = logs.join('\n');
     expect(output).toMatch(/kinjot key/);
     expect(output).toContain(
+      'API key access: Read and create — can read and create notes; edits, appends and session autosave need a full-access key.',
+    );
+    expect(output).toContain(
       `claude mcp add kinjot -e KINJOT_API_KEY=${GOOD_KEY} -- npx -y kinjot`,
     );
     expect(output).toContain(
@@ -312,7 +394,9 @@ describe('copy', () => {
   });
 
   it('runInit omits KINJOT_API_URL for the legacy production endpoint', async () => {
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
     const logSpy = vi
@@ -338,7 +422,9 @@ describe('copy', () => {
   it('runInit carries a custom endpoint into both client commands with shell-safe quoting', async () => {
     const apiUrl =
       "https://self-hosted.example/functions/v1/mcp-api?next=$(touch nope);owner=o'neil";
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
     const logSpy = vi
@@ -370,7 +456,9 @@ describe('copy', () => {
 
   it('runInit --api-url overrides KINJOT_API_URL and carries the selected endpoint through setup', async () => {
     const flagUrl = 'https://chosen.example/functions/v1/mcp-api';
-    const fetchMock = vi.fn(async () => jsonResponse(200, { notes: [] }));
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const logs: string[] = [];
     const logSpy = vi

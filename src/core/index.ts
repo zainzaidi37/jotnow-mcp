@@ -196,12 +196,16 @@ export type ExportManifest = ExportManifestV2;
 // its SHA-256 hex digest is stored. Column grants hide key_hash from clients,
 // so reads use ApiKeyPublicSchema; the full schema exists for the Edge
 // Function and for the one insert that stores the hash.
+export const API_KEY_ACCESS_LEVELS = ['read', 'read_create', 'full'] as const;
+export type ApiKeyAccess = (typeof API_KEY_ACCESS_LEVELS)[number];
+
 export const ApiKeySchema = z.object({
   id: uuid,
   user_id: uuid,
   name: z.string().min(1),
   key_prefix: z.string().min(1),
   key_hash: z.string().regex(/^[0-9a-f]{64}$/),
+  access: z.enum(API_KEY_ACCESS_LEVELS),
   last_used_at: timestamptz.nullable(),
   revoked_at: timestamptz.nullable(),
   created_at: timestamptz,

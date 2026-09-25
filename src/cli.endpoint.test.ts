@@ -31,6 +31,11 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
+function setupResponse(init: RequestInit): Response {
+  const { action } = JSON.parse(String(init.body)) as { action: string };
+  return jsonResponse(200, action === 'key_info' ? { access: 'full' } : { notes: [] });
+}
+
 let dir: string;
 let previous: Record<string, string | undefined>;
 
@@ -60,7 +65,7 @@ describe('kinjot init, against a self-hosted deployment', () => {
   async function runInitCapturingOutput(): Promise<string> {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse(200, { notes: [] })),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => setupResponse(init)),
     );
     const lines: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
@@ -72,10 +77,9 @@ describe('kinjot init, against a self-hosted deployment', () => {
   }
 
   it('validates the key against the configured endpoint, not the default', async () => {
-    const fetchMock = vi.fn(async (url: string | URL) => {
-      void url;
-      return jsonResponse(200, { notes: [] });
-    });
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      setupResponse(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     vi.spyOn(console, 'log').mockImplementation(() => {});
     const { main } = await import('./cli.js');
@@ -107,7 +111,7 @@ describe('kinjot init, against the hosted default', () => {
     delete process.env.KINJOT_API_URL;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse(200, { notes: [] })),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => setupResponse(init)),
     );
     const lines: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => {
@@ -130,7 +134,7 @@ describe('kinjot key, against a self-hosted deployment', () => {
   it('carries the endpoint even though the key itself is stored on disk', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => jsonResponse(200, { notes: [] })),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => setupResponse(init)),
     );
     const lines: string[] = [];
     const stdout = { write: (chunk: string) => (lines.push(chunk), true) };

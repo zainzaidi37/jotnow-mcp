@@ -4,6 +4,9 @@ import type { Config } from './config.js';
 import { normalizeTags } from './tagging.js';
 import { parseNoteLabel } from './core/note-label.js';
 import { isUuidShapeAnyCase } from './uuid.js';
+import type { ApiKeyAccess } from './core/index.js';
+
+export const KEY_INFO_DEADLINE_MS = 1_500;
 
 // Thin client for the mcp-api Edge Function. Note ids are generated here by
 // default — UUIDs are client-generated throughout kinjot.
@@ -99,7 +102,7 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
-    readonly kind?: 'unsupported_action',
+    readonly kind?: 'unsupported_action' | 'key_access',
   ) {
     super(message);
     this.name = 'ApiError';
@@ -112,6 +115,11 @@ export class NotesApi {
     private readonly fetchImpl: typeof fetch = fetch,
     private readonly options: { deadlineMs?: number } = {},
   ) {}
+
+  async keyInfo(deadlineMs?: number): Promise<ApiKeyAccess> {
+    const result = await this.call('key_info', wireSchemas.key_info, {}, deadlineMs);
+    return result.access;
+  }
 
   async saveNote(input: SaveNoteInput): Promise<SavedNote> {
     if (input.id !== undefined && !isUuidShapeAnyCase(input.id)) {
@@ -230,11 +238,12 @@ export class NotesApi {
     action: string,
     schema: z.ZodType<T, z.ZodTypeDef, unknown>,
     params: Record<string, unknown>,
+    deadlineMs = this.options.deadlineMs ?? 30_000,
   ): Promise<T> {
     const controller = new AbortController();
     const signal = controller.signal;
     const timeoutError = () => new ApiError(0, `request to ${this.config.apiUrl} timed out`);
-    const timer = setTimeout(() => controller.abort(), this.options.deadlineMs ?? 30_000);
+    const timer = setTimeout(() => controller.abort(), deadlineMs);
     let onAbort: () => void;
     const aborted = new Promise<never>((_, reject) => {
       onAbort = () => reject(timeoutError());
@@ -257,7 +266,10 @@ export class NotesApi {
         throw new ApiError(0, `could not reach ${this.config.apiUrl}: ${(cause as Error).message}`);
       }
 
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        code?: string;
+      } | null;
       if (signal.aborted) throw timeoutError();
       if (!response.ok) {
         if (response.status === 401) {
@@ -275,6 +287,7 @@ export class NotesApi {
         throw new ApiError(
           response.status,
           body?.error ?? `request failed with ${response.status}`,
+          response.status === 403 && body?.code === 'key_access' ? 'key_access' : undefined,
         );
       }
       const invalidReply = (detail: string) =>

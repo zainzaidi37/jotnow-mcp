@@ -9,8 +9,9 @@ import { runInitSelfHost, runWhere, selfHostApiUrl } from './cli.js';
 const GOOD_KEY = `kj_live_${'a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8s9T0u1V'.slice(0, 43)}`;
 const REF = 'abcdefghijklmnopqrst';
 
-function response(): Response {
-  return new Response(JSON.stringify({ notes: [] }), {
+function response(init: RequestInit): Response {
+  const { action } = JSON.parse(String(init.body)) as { action: string };
+  return new Response(JSON.stringify(action === 'key_info' ? { access: 'read' } : { notes: [] }), {
     status: 200,
     headers: { 'content-type': 'application/json' },
   });
@@ -54,7 +55,9 @@ describe('runInitSelfHost', () => {
   });
 
   it('reads project and hidden key, validates, then persists the pair', async () => {
-    const fetchMock = vi.fn(async () => response());
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      response(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const stdout = capture();
     await runInitSelfHost({
@@ -74,6 +77,9 @@ describe('runInitSelfHost', () => {
     expect(stdout.all()).toContain(GOOD_KEY);
     expect(stdout.all()).toContain(`"KINJOT_API_URL": "${apiUrl}"`);
     expect(stdout.all()).toContain('mcpServers');
+    expect(stdout.all()).toContain(
+      'API key access: Read only — can read notes; cannot create or edit.',
+    );
     expect(stdout.all()).toContain(`claude mcp add kinjot -e KINJOT_API_KEY=${GOOD_KEY}`);
     expect(stdout.all()).toContain(`codex mcp add kinjot --env KINJOT_API_KEY=${GOOD_KEY}`);
   });
@@ -81,7 +87,7 @@ describe('runInitSelfHost', () => {
   it('accepts project and key in one ended piped chunk without losing the second line', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response()),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => response(init)),
     );
     const input = new EventEmitter();
     const done = runInitSelfHost({
@@ -100,7 +106,7 @@ describe('runInitSelfHost', () => {
   it('accepts ended piped input without a final newline', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response()),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => response(init)),
     );
     const input = new EventEmitter();
     const done = runInitSelfHost({
@@ -116,7 +122,9 @@ describe('runInitSelfHost', () => {
   });
 
   it('preserves URL punctuation from the visible TTY prompt and releases its listeners', async () => {
-    const fetchMock = vi.fn(async () => response());
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      response(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const input = new EventEmitter();
     const url = 'http://127.0.0.1:54321/custom/path?owner=o-neil&mode=1';
@@ -138,7 +146,7 @@ describe('runInitSelfHost', () => {
   it('handles a two-line TTY paste without echoing the key and pauses the stream on completion', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response()),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => response(init)),
     );
     const projectUrl = 'http://127.0.0.1:54321/functions/v1/mcp-api?mode=test';
     const input = new EventEmitter() as EventEmitter & {
@@ -170,7 +178,9 @@ describe('runInitSelfHost', () => {
   });
 
   it('an explicit endpoint skips the project question and accepts a supplied key', async () => {
-    const fetchMock = vi.fn(async () => response());
+    const fetchMock = vi.fn(async (_url: string | URL | Request, init: RequestInit) =>
+      response(init),
+    );
     vi.stubGlobal('fetch', fetchMock);
     const readProject = vi.fn(async () => REF);
     const apiUrl = 'https://chosen.example/functions/v1/mcp-api';
@@ -237,7 +247,7 @@ describe('runInitSelfHost', () => {
   it('where reports the endpoint paired with the stored key', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => response()),
+      vi.fn(async (_url: string | URL | Request, init: RequestInit) => response(init)),
     );
     const apiUrl = 'https://project.example/functions/v1/mcp-api';
     await runInitSelfHost({

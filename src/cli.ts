@@ -1,5 +1,12 @@
 import { createRequire } from 'node:module';
-import { ApiError, NotesApi, type RecallMatch, type SearchHit, type SearchResult } from './api.js';
+import {
+  ApiError,
+  KEY_INFO_DEADLINE_MS,
+  NotesApi,
+  type RecallMatch,
+  type SearchHit,
+  type SearchResult,
+} from './api.js';
 import { LocalUnavailableError, resolveBackend } from './backend.js';
 import {
   API_KEY_PATTERN,
@@ -213,6 +220,21 @@ function printRecall(matches: RecallMatch[], query: string): void {
   console.log(`Read one with: kinjot get <label|id-prefix|uuid>`);
 }
 
+const ACCESS_LINES = {
+  read: 'API key access: Read only — can read notes; cannot create or edit.',
+  read_create:
+    'API key access: Read and create — can read and create notes; edits, appends and session autosave need a full-access key.',
+  full: 'API key access: Full access — can read, create, edit and append notes.',
+} as const;
+
+async function printKeyAccess(api: NotesApi, write: (line: string) => void): Promise<void> {
+  try {
+    write(`${ACCESS_LINES[await api.keyInfo(KEY_INFO_DEADLINE_MS)]}\n`);
+  } catch {
+    // The key was already validated; the level hint must not interrupt setup.
+  }
+}
+
 async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Promise<void> {
   rejectUnknownFlags(flags, ['key', 'api-url']);
   const key = flags.get('key') ?? env.KINJOT_API_KEY ?? '';
@@ -229,6 +251,7 @@ async function runInit(flags: Map<string, string>, env: NodeJS.ProcessEnv): Prom
   process.stdout.write('Checking the key against the API… ');
   await api.listRecentNotes(1);
   console.log('ok ✔\n');
+  await printKeyAccess(api, (line) => console.log(line.trimEnd()));
 
   const envBlock: Record<string, string> = { KINJOT_API_KEY: key };
   if (apiUrl !== DEFAULT_API_URL) envBlock.KINJOT_API_URL = apiUrl;
@@ -427,6 +450,7 @@ export async function runInitSelfHost(deps: RunSelfHostDeps = {}): Promise<void>
   stdout.write('Checking the key against the API… ');
   await api.listRecentNotes(1);
   stdout.write('ok ✔\n');
+  await printKeyAccess(api, (line) => stdout.write(line));
   saveStoredAccount(key, apiUrl, configDir(env));
   stdout.write('Saved — Kinjot will use this self-hosted project automatically.\n\n');
   if (env.KINJOT_API_KEY?.trim() || env.KINJOT_API_URL?.trim()) {
@@ -581,6 +605,7 @@ export async function runKey(deps: RunKeyDeps = {}): Promise<void> {
   stdout.write('Checking the key against the API… ');
   await api.listRecentNotes(1);
   stdout.write('ok ✔\n\n');
+  await printKeyAccess(api, (line) => stdout.write(line));
 
   if (apiUrl === DEFAULT_API_URL) saveStoredKey(key, configDir(env));
   else saveStoredAccount(key, apiUrl, configDir(env));
@@ -782,7 +807,8 @@ export async function main(argv: string[] = process.argv.slice(2)): Promise<void
       error instanceof UsageError
         ? 2
         : error instanceof LocalUnavailableError ||
-            (error instanceof ApiError && error.kind === 'unsupported_action')
+            (error instanceof ApiError &&
+              (error.kind === 'unsupported_action' || error.kind === 'key_access'))
           ? 4
           : error instanceof ApiError && error.status === 404 && error.message === 'note not found'
             ? 3

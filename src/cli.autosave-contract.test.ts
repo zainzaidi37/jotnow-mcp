@@ -174,12 +174,15 @@ describe('autosave CLI contract', () => {
     ['bare 404', 404, {}, 1],
     ['server failure', 500, { error: 'internal error' }, 1],
     ['old backend', 400, { error: 'unknown action' }, 4],
+    ['key access', 403, { error: 'this API key cannot edit', code: 'key_access' }, 4],
+    ['Pro gate', 403, { error: 'AI recall requires the Pro plan' }, 1],
   ])('classifies %s by typed API status and error', async (_name, status, body, code) => {
     stub(body, status);
     await main(['append', NOTE_ID, '--text', 'entry']);
     expect(process.exitCode).toBe(code);
     expect(errors).toHaveLength(1);
     expect(errors[0]).toMatch(/^error: /);
+    if (_name === 'key access') expect(errors).toEqual(['error: this API key cannot edit']);
   });
 
   it.each([

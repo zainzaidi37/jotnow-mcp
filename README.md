@@ -50,6 +50,8 @@ tagged and searchable.
 | `append_to_jot`    | Add a paragraph to the end of a note                                     |
 | `list_recent_jots` | List your most recently updated notes                                    |
 
+The server checks the key at startup and lists only tools its access level allows.
+
 Every note has a short label, like `A10`. Listings show it, and your agent can
 use it to open, edit or add to that note, for example "add this to A10".
 
@@ -82,7 +84,7 @@ CLI exit codes:
 | 1    | Request, timeout, backend, or other failure.                                       |
 | 2    | Usage error, including an invalid ID or unknown flag.                              |
 | 3    | The note was definitely not found.                                                 |
-| 4    | The operation is unavailable for this library or backend.                          |
+| 4    | The operation is unavailable for this library or backend, or the key lacks access. |
 | 5    | The append succeeded, but the backend kept a history copy despite `--no-snapshot`. |
 
 Without a global install, put `npx` in front of any command, for example

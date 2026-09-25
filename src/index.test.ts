@@ -686,6 +686,26 @@ describe('buildServer', () => {
     ]);
   });
 
+  it.each([
+    ['read', ['find_jots', 'get_jot', 'list_recent_jots', 'recall_jots']],
+    ['read_create', ['find_jots', 'get_jot', 'jot', 'list_recent_jots', 'recall_jots']],
+    [
+      'full',
+      [
+        'append_to_jot',
+        'edit_jot',
+        'find_jots',
+        'get_jot',
+        'jot',
+        'list_recent_jots',
+        'recall_jots',
+      ],
+    ],
+  ] as const)('registers exactly the %s tools', (access, names) => {
+    const server = buildServer(api, '0.0.0-test', { repoTag: null, access });
+    expect(Object.keys(registeredTools(server)).sort()).toEqual(names);
+  });
+
   it('every tool description demands explicit invocation; jot excludes memory requests', () => {
     const tools = registeredTools(buildServer(api, '0.0.0-test', { repoTag: null }));
     for (const name of ['jot', 'find_jots', 'list_recent_jots'] as const) {

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { API_KEY_ACCESS_LEVELS } from './core/index.js';
 
 // Public mcp-api envelopes, deliberately looser than database row schemas:
 // ids/timestamps/source are strings and additive server fields are tolerated.
@@ -12,6 +13,7 @@ const searchHit = z.object({
 });
 
 export const wireSchemas = {
+  key_info: z.object({ access: z.enum(API_KEY_ACCESS_LEVELS) }),
   save_note: z.object({
     note: z.object({ id: z.string(), title: z.string(), created_at: z.string() }),
     // This vocabulary hint has always been best-effort, including malformed
